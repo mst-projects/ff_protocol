@@ -5,30 +5,20 @@ use traits::TryInto;
 use starknet::ContractAddress;
 use starknet::Felt252TryIntoContractAddress;
 
-
-
 #[starknet::interface]
 trait ISoraswapPool<TContractState> {
-    // fn MINIMUM_LIQUIDITY() -> u256; //スマートコントラクトにおいて定数をどのように設定するか。
     fn get_factory(self: @TContractState) -> ContractAddress;
     fn get_token0(self: @TContractState) -> ContractAddress;
     fn get_token1(self: @TContractState) -> ContractAddress;
     fn get_reserves(self: @TContractState) -> (u256, u256);
     fn price0_cumulative_last(self: @TContractState) -> u256;
     fn price1_cumulative_last(self: @TContractState) -> u256;
-
     fn k_last(self: @TContractState) -> u256;
-
     fn mint(ref self: TContractState, to: ContractAddress) -> u256;
-
     fn burn(ref self: TContractState, to: ContractAddress) -> (u256, u256);
-
     // bytesとは何を指すのか。Spanとはどのような構造のtypeであるか。
     fn swap(ref self: TContractState, amount0_out: u256, amount1_out: u256, bytes: Span<felt252>, to: ContractAddress) -> (u256, u256);
-
     fn initialize(ref self: TContractState, token0: ContractAddress, token1: ContractAddress);
-
-    fn sum(self: @TContractState, a: u256, b: u256) -> u256;
 
 }
 
