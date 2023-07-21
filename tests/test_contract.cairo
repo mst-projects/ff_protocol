@@ -5,6 +5,7 @@ use traits::TryInto;
 use starknet::ContractAddress;
 use starknet::Felt252TryIntoContractAddress;
 use cheatcodes::PreparedContract;
+use forge_print::PrintTrait;
 
 use starknet_forge_template::IHelloStarknetSafeDispatcher;
 use starknet_forge_template::IHelloStarknetSafeDispatcherTrait;
