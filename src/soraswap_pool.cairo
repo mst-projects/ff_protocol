@@ -1,83 +1,105 @@
-use array::ArrayTrait;
-use result::ResultTrait;
-use option::OptionTrait;
-use traits::TryInto;
+use array::{ArrayTrait, SpanTrait};
 use starknet::ContractAddress;
-use starknet::Felt252TryIntoContractAddress;
 
 #[starknet::interface]
 trait ISoraswapPool<TContractState> {
+    // For SoraswapIERC20
+    fn get_name(self: @TContractState) -> felt252;
+    fn get_symbol(self: @TContractState) -> felt252;
+    fn get_decimals(self: @TContractState) -> u8;
+    fn get_total_supply(self: @TContractState) -> u256;
+    fn balance_of(self: @TContractState, account: ContractAddress) -> u256;
+    fn allowance(self: @TContractState, owner: ContractAddress, spender: ContractAddress) -> u256;
+    fn transfer(ref self: TContractState, recipient: ContractAddress, amount: u256);
+    fn transfer_from(
+        ref self: TContractState, sender: ContractAddress, recipient: ContractAddress, amount: u256
+    );
+    fn approve(ref self: TContractState, spender: ContractAddress, amount: u256);
+    fn increase_allowance(ref self: TContractState, spender: ContractAddress, added_value: u256);
+    fn decrease_allowance(
+        ref self: TContractState, spender: ContractAddress, subtracted_value: u256
+    );
+
+    // For ISoraswapPool
+    fn initialize(ref self: TContractState, token0: ContractAddress, token1: ContractAddress);
+    fn skim(ref self: TContractState, to: ContractAddress);
+    fn mint(ref self: TContractState, to: ContractAddress) -> u256;
+    fn burn(ref self: TContractState, to: ContractAddress) -> (u256, u256);
+    // bytesとは何を指すのか。Spanとはどのような構造のtypeであるか。
+    fn swap(
+        ref self: TContractState,
+        amount0_out: u256,
+        amount1_out: u256,
+        data: Span<felt252>,
+        to: ContractAddress
+    );
+    fn sync(ref self: TContractState);
+
+    // getter
     fn get_factory(self: @TContractState) -> ContractAddress;
     fn get_token0(self: @TContractState) -> ContractAddress;
     fn get_token1(self: @TContractState) -> ContractAddress;
     fn get_reserves(self: @TContractState) -> (u256, u256);
-    fn price0_cumulative_last(self: @TContractState) -> u256;
-    fn price1_cumulative_last(self: @TContractState) -> u256;
-    fn k_last(self: @TContractState) -> u256;
-    fn mint(ref self: TContractState, to: ContractAddress) -> u256;
-    fn burn(ref self: TContractState, to: ContractAddress) -> (u256, u256);
-    // bytesとは何を指すのか。Spanとはどのような構造のtypeであるか。
-    fn swap(ref self: TContractState, amount0_out: u256, amount1_out: u256, bytes: Span<felt252>, to: ContractAddress) -> (u256, u256);
-    fn initialize(ref self: TContractState, token0: ContractAddress, token1: ContractAddress);
-
+    fn get_k_last(self: @TContractState) -> u256;
 }
 
 #[starknet::contract]
-mod SoraSwapPool {
+mod SoraswapPool {
     use zeroable::Zeroable;
-    use starknet::get_caller_address;
-    use array::SpanTrait;
-    use starknet::contract_address_const;
-    use core::traits::TryInto;
-    use core::traits::Into;
-    use box::BoxTrait;
-    use clone::Clone;
-    use array::ArrayTCloneImpl;
-    use option::OptionTrait;
-    use option::OptionTraitImpl;
     use starknet::ContractAddress;
-    use starknet::ContractAddressIntoFelt252;
-    use array::{SpanSerde, ArrayTrait};
+    use starknet::get_block_timestamp;
+    use starknet::contract_address::ContractAddressZeroable;
+    use starknet::{get_contract_address, get_caller_address};
     use starknet::class_hash::ClassHash;
+
+    use core::traits::{TryInto, Into};
     use core::ec;
-    use soraswap::soraswap_erc20::IERC20Dispatcher;
-    use soraswap::soraswap_erc20::IERC20;
-    use soraswap::soraswap_erc20::IERC20DispatcherTrait;
+    use core::serde::Serde;
+
+    use array::{ArrayTCloneImpl, SpanSerde, ArrayTrait, SpanTrait};
+    use clone::Clone;
+    use integer::{U256Add, U256Sub, U256Mul, U256Div};
+    use option::{OptionTrait, OptionTraitImpl};
+    use result::ResultTrait;
+
+    use soraswap::soraswap_erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
+    use soraswap::soraswap_factory::{ISoraswapFactoryDispatcher, ISoraswapFactoryDispatcherTrait};
+    use soraswap::libraries::library::{ISoraswapCalleeDispatcher, ISoraswapCalleeDispatcherTrait};
+
+    const MINIMUM_LIQUIDITY: u128 = 1000;
 
     #[storage] //structは明示しない限り、外からアクセスできないという理解で良いか。
     struct Storage {
-        MINIMUM_LIQUIDITY: u128,
+        minimum_liquidity: u128,
         name: felt252,
         symbol: felt252,
         decimals: u8,
         total_supply: u256,
         balances: LegacyMap::<ContractAddress, u256>,
         allowances: LegacyMap::<(ContractAddress, ContractAddress), u256>,
-        // constantをどのように処理するか。
-        // feeの情報はどこに保存されるのか。
         factory: ContractAddress,
         token0: ContractAddress,
         token1: ContractAddress,
         reserve0: u256,
         reserve1: u256,
-        block_timestamp_last: u256,
-        price0_cumulative_last: u256,
-        price1_cumulative_last: u256,
         k_last: u256,
     }
 
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
+        #[key]
         Swap: Swap,
         Mint: Mint,
         Burn: Burn,
+        Sync: Sync,
         Transfer: Transfer,
         Approval: Approval,
     }
 
-    #[derive(Drop, starknet::Event)]
+    #[derive(Drop, Serde, starknet::Event)]
     struct Swap {
+        #[key]
         sender: ContractAddress,
         amount0In: u256,
         amount1In: u256,
@@ -88,6 +110,7 @@ mod SoraSwapPool {
 
     #[derive(Drop, starknet::Event)]
     struct Mint {
+        #[key]
         sender: ContractAddress,
         amount0: u256,
         amount1: u256
@@ -95,6 +118,7 @@ mod SoraSwapPool {
 
     #[derive(Drop, starknet::Event)]
     struct Burn {
+        #[key]
         sender: ContractAddress,
         amount0: u256,
         amount1: u256,
@@ -113,6 +137,11 @@ mod SoraSwapPool {
         spender: ContractAddress,
         value: u256,
     }
+    #[derive(Drop, starknet::Event)]
+    struct Sync {
+        reserve0: u256,
+        reserve1: u256,
+    }
 
     #[constructor]
     fn constructor(ref self: ContractState) {
@@ -120,11 +149,11 @@ mod SoraSwapPool {
         self.factory.write(get_caller_address());
         let new_factory = self.factory.read();
 
-        self.MINIMUM_LIQUIDITY.write(1000);
+        self.minimum_liquidity.write(MINIMUM_LIQUIDITY);
     }
 
     #[external(v0)]
-    impl IERC20Impl of soraswap::soraswap_erc20::IERC20<ContractState> {
+    impl ISoraswapPoolImpl of super::ISoraswapPool<ContractState> {
         fn get_name(self: @ContractState) -> felt252 {
             self.name.read()
         }
@@ -191,85 +220,227 @@ mod SoraSwapPool {
                     caller, spender, self.allowances.read((caller, spender)) - subtracted_value
                 );
         }
-    }
 
 
-    #[external(v0)]
-    impl ISoraswapPoolImpl of super::ISoraswapPool<ContractState>{
-    //  // this low-level function should be called from a contract which performs important safety checks
+        fn initialize(ref self: ContractState, token0: ContractAddress, token1: ContractAddress) {
+            assert(starknet::get_caller_address() == self.factory.read(), 'FORBIDDEN');
+            self.token0.write(token0);
+            self.token1.write(token1);
+        }
+
         // この関数は、現実にdepositされている残高が増えた後に呼ぶことが想定される（そうしないと、callerは何もmintすることができない。
         // 現実にdepositされている残高はbalanceと観念され、スマコンに記録されている残高は、reserveと観念される。 add liquidity
-        fn mint(ref self: ContractState, to: ContractAddress) -> u256 {
+        fn mint(ref self: ContractState, to: ContractAddress) -> u256 //liquidity
+        {
+            let zero_address: ContractAddress = Zeroable::zero();
             let contract = starknet::get_contract_address();
             let reserve0 = self.reserve0.read();
             let reserve1 = self.reserve1.read();
-            
-            let balance0 = IERC20Dispatcher{contract_address: self.token0.read()}.balance_of(contract);
-            let balance1 = IERC20Dispatcher{contract_address: self.token1.read()}.balance_of(contract);
+
+            let balance0 = IERC20Dispatcher {
+                contract_address: self.token0.read()
+            }.balance_of(contract);
+            let balance1 = IERC20Dispatcher {
+                contract_address: self.token1.read()
+            }.balance_of(contract);
 
             // safe mathを導入する。下記のamountは追加されたトークンの量を表す。
             let amount0 = balance0 - reserve0;
             let amount1 = balance1 - reserve1;
 
-            //　下記の関数は理解していない。
-            let feeOn = _mint_fee(_reserve0, reserve1);
+            // if protocol fee is on
+            let fee_on = self._mint_fee(reserve0, reserve1);
 
             // total supplyは、Liquidity Tokenの発行前の数量を示す。
             let total_supply = self.total_supply.read();
 
-            let minimum_liquidity: u128 = self.MINIMUM_LIQUIDITY.read();
+            let minimum_liquidity: u128 = self.minimum_liquidity.read();
+
+            let mut liquidity = 0_u256;
             //sqrtをどのように実装するか。
-            if (total_supply == 0) {
-                let liquidity: u256 = (u256_sqrt(amount0 * amount1) - minimum_liquidity).into();
-                assert(liquidity > 0, 'SoraSwap: INSUFFICIENT_LIQUIDITY_MINTED');
-                self._mint(ContractAddress.zero_address(), minimum_liquidity.into()); // liquidity tokenが0の場合、minumum liquidityとして強制的に幾らかが割り当てられる。minimum liquidityは永久にロックされる。
-                //poolを作った時に、これは発行されるはず。これは、poolを作った人が支払う負担金のようなもので、poolを作った人も取り出すことができないように、liquidity tokenは0アドレスに対して発行される。
+            if total_supply == 0 {
+                liquidity = (u256_sqrt(amount0 * amount1) - minimum_liquidity).into();
+                assert(liquidity > 0, 'INSUFFICIENT_LIQUIDITY_MINTED');
+
+                self
+                    ._mint(
+                        zero_address, minimum_liquidity.into()
+                    ); // liquidity tokenが0の場合、minumum liquidityとして強制的に幾らかが割り当てられる。minimum liquidityは永久にロックされる。
+            //poolを作った時に、これは発行されるはず。これは、poolを作った人が支払う負担金のようなもので、poolを作った人も取り出すことができないように、liquidity tokenは0アドレスに対して発行される。
             } else {
-                //token0とtoken1のどちらかで見てより小さい方の割合に従って、トークンを発行する。
-                let liquidity: u256 = u256_min(amount0 * total_supply / reserve0, amount1 * total_supply / reserve1).into();
-                assert(liquidity > 0, 'SoraSwap: INSUFFICIENT_LIQUIDITY_MINTED');
-                self._mint(to, minimum_liquidity.into()); 
+                let liquidity0 = U256Sub::sub(U256Mul::mul(amount0, total_supply), reserve0);
+                let liquidity1 = U256Sub::sub(U256Mul::mul(amount1, total_supply), reserve1);
+                if liquidity0 <= liquidity1 {
+                    liquidity = liquidity0;
+                } else {
+                    liquidity = liquidity1
+                }
+                assert(liquidity > 0, 'INSUFFICIENT_LIQUIDITY_MINTED');
+                self._mint(to, minimum_liquidity.into());
             }
-            _update(balance0, balance1, reserve0, reserve1);
-            if (feeOn) {
+            self._update(balance0, balance1, reserve0, reserve1);
+            if (fee_on) {
                 self.k_last.write(reserve0 * reserve1);
             }
-            self.emit(Mint{sender: get_caller_address(), amount0, amount1});
-            
-
-
-        //     let block_info = starknet::get_block_info().unbox();
-        //     _mint(ref self, to, block_info.timestamp);
+            self.emit(Event::Mint(Mint { sender: get_caller_address(), amount0, amount1 }));
+            return liquidity;
         }
 
-        fn burn(ref self: ContractState, to: ContractAddress) -> (u256, u256) //amount0, amount1を出力する。
-         {
+        // This function is expected to be called atomically after the caller sends liquidity tokens to the pool contract 
+        fn burn(
+            ref self: ContractState, to: ContractAddress
+        ) -> (u256, u256) //amount0, amount1を出力する。
+        {
             let contract = starknet::get_contract_address();
             let reserve0 = self.reserve0.read();
             let reserve1 = self.reserve1.read();
+            let token0 = self.token0.read();
+            let token1 = self.token0.read();
 
-            let balance0 = IERC20Dispatcher{contract_address: self.token0.read()}.balance_of(contract);
-            let balance1 = IERC20Dispatcher{contract_address: self.token1.read()}.balance_of(contract);
+            let balance0 = IERC20Dispatcher { contract_address: token0 }.balance_of(contract);
+            let balance1 = IERC20Dispatcher { contract_address: token1 }.balance_of(contract);
 
             let liquidity = self.balances.read(contract);
 
+            let fee_on = self._mint_fee(reserve0, reserve1);
+            let total_supply = self.total_supply.read();
 
+            let amount0 = U256Div::div(U256Mul::mul(liquidity, balance0), total_supply);
+            let amount1 = U256Div::div(U256Mul::mul(liquidity, balance1), total_supply);
 
+            assert(amount0 > 0 && amount1 > 0, 'INSUFFICIENT_LIQUIDITY_BURNED');
+            self._burn(contract, liquidity);
+
+            IERC20Dispatcher { contract_address: token0 }.transfer_from(contract, to, amount0);
+            IERC20Dispatcher { contract_address: token1 }.transfer_from(contract, to, amount1);
+
+            let updated_balance0 = IERC20Dispatcher {
+                contract_address: token0
+            }.balance_of(contract);
+
+            let updated_balance1 = IERC20Dispatcher {
+                contract_address: token1
+            }.balance_of(contract);
+
+            self._update(updated_balance0, updated_balance1, reserve0, reserve1);
+
+            if fee_on {
+                self.k_last.write(U256Mul::mul(reserve0, reserve1));
+            }
+            self
+                .emit(
+                    Event::Burn(
+                        Burn { sender: starknet::get_caller_address(), amount0, amount1, to }
+                    )
+                );
+            return (amount0, amount1);
         }
 
         // lockのmodifierを追加する必要がある。
-        fn swap(ref self: ContractState, amount0_out: u256, amount1_out: u256, data: Span<felt252>, to: ContractAddress) -> (u256, u256) {
-            assert(amount0_out > 0, 'SoraSwap: INSUFFICIENT_OUTPUT_AMOUNT');
+        fn swap(
+            ref self: ContractState,
+            amount0_out: u256,
+            amount1_out: u256,
+            data: Span<felt252>,
+            to: ContractAddress
+        ) {
+            assert(amount0_out > 0 && amount1_out > 0, 'INSUFFICIENT_OUTPUT_AMOUNT');
+            let reserve0 = self.reserve0.read();
+            let reserve1 = self.reserve1.read();
+
+            assert(
+                amount0_out < reserve0 && amount1_out < reserve1,
+                'INSUFFICIENT_LIQUIDITY'
+            );
+
+            let contract = starknet::get_contract_address();
+
+            let mut balance0 = 0_u256;
+            let mut balance1 = 0_u256;
+
+            let token0 = self.token0.read();
+            let token1 = self.token1.read();
+
+            assert(to != token0 && to != token1, 'INVALID_TO');
+
+            if amount0_out > 0 {
+                IERC20Dispatcher {
+                    contract_address: token0
+                }.transfer_from(contract, to, amount0_out);
+            }
+
+            if amount1_out > 0 {
+                IERC20Dispatcher {
+                    contract_address: token1
+                }.transfer_from(contract, to, amount1_out);
+            }
+
+            // defalut case: data = 0 / if someone wants to send the tokens to another smart contract
+            // and invoke some functions with the specified data, data lengsh should be 1 or more.
+            if data.len() > 0 {
+                ISoraswapCalleeDispatcher {
+                    contract_address: to
+                }.soraswap_call(starknet::get_caller_address(), amount0_out, amount1_out, data);
+            }
+            // このバランスの量は、スワップによるcallerに対するトークンの送信を実行したあとのトークン残高
+            balance0 = IERC20Dispatcher { contract_address: token0 }.balance_of(contract);
+            balance1 = IERC20Dispatcher { contract_address: token1 }.balance_of(contract);
+
+            let amount0_in = 0;
+            if balance0 > U256Sub(reserve0, amount0_out) {
+                amount0_in = U256Sub::sub(balance0, (U256Sub(reserve0 - amount0_out)); 
+            }
+            if balance1 > U256Sub(reserve1, amount1_out) {
+                amount1_in = U256Sub::sub(balance1, (U256Sub(reserve1 - amount1_out)); 
+            }
+            assert(amount0_in > 0 || amount1_in > 0, 'INSUFFICIENT_INPUT_AMOUNT');
+            let balance0_adjusted = U256Sub::sub(U256Mul::mul(balance0, 1000), amount0_in * 3);
+            let balance1_adjusted = U256Sub::sub(U256Mul::mul(balance1, 1000), amount1_in * 3);
+
+            assert(
+                U256Mul::mul(balance0_adjusted, balance1_adjusted) >= U256::mul(U256Mul::mul(
+                    reserve0, reserve1), 1000**2), 'K');
+            self._update(balance0, balance1, reserve0, reserve1);
+            emit(Event(Swap {
+                sender: starknet::get_caller_address(),
+                amount0In: amount0_in,
+                amount1In: amount1_in,
+                amount0Out: amount0_out,
+                amount1Out: amount1_out,
+                to
+            }))
+            );
+
         }
 
         fn skim(ref self: ContractState, to: ContractAddress) {
-        let token0 = self.token0.read();
-        let token1 = self.token1.read();
-        IERC20Dispatcher{contract_address: token0}.transfer_from(IERC20Dispatcher{contract_address: token0}.balances.read(starknet::get_contract_address()), starknet::get_contract_address()) - self.reserve0.read());
-        IERC20Dispatcher{contract_address: token1}.transfer_from(balances(starknet::get_contract_address()) - self.reserve1.read());
+            let contract = starknet::get_contract_address();
+            let token0 = self.token0.read();
+            let token1 = self.token1.read();
+            let balance0 = IERC20Dispatcher { contract_address: token0 }.balance_of(contract);
+            let balance1 = IERC20Dispatcher { contract_address: token1 }.balance_of(contract);
+            IERC20Dispatcher {
+                contract_address: token0
+            }.transfer_from(contract, to, balance0 - self.reserve0.read());
+            IERC20Dispatcher {
+                contract_address: token1
+            }.transfer_from(contract, to, balance1 - self.reserve1.read());
         }
 
-    //       getters
+        fn sync(ref self: ContractState) {
+            let contract = starknet::get_contract_address();
+            let token0 = self.token0.read();
+            let token1 = self.token1.read();
+            let balance0 = IERC20Dispatcher { contract_address: token0 }.balance_of(contract);
+            let balance1 = IERC20Dispatcher { contract_address: token1 }.balance_of(contract);
+            self._update(balance0, balance1, self.reserve0.read(), self.reserve1.read());
+        }
+
+        // getters
+        fn get_factory(self: @ContractState) -> ContractAddress {
+            return self.factory.read();
+        }
+
         fn get_token0(self: @ContractState) -> ContractAddress {
             return self.token0.read();
         }
@@ -277,49 +448,65 @@ mod SoraSwapPool {
         fn get_token1(self: @ContractState) -> ContractAddress {
             return self.token1.read();
         }
-
-
         fn get_reserves(self: @ContractState) -> (u256, u256) {
             return (self.reserve0.read(), self.reserve1.read());
         }
 
-
+        fn get_k_last(self: @ContractState) -> u256 {
+            return self.k_last.read();
+        }
     }
 
     #[generate_trait]
     impl SoraswapERC20PrivateImpl of SoraswapERC20PrivateTrait {
-        fn _safe_transfer(ref self: ContractState, token: ContractAddress, to: ContractAddress, value: u256) {
-            let success = IERC20Dispatcher{contract_address: token}.transfer(to, value);
-            assert(success, 'SoraSwap: TRANSFER_FAILED');
+        // liquidy tokenをpoolコントラクト自身が持っている状況が一時的に生まれている。
+        fn _mint(ref self: ContractState, to: ContractAddress, value: u256) {
+            self.total_supply.write(U256Add::add(self.total_supply.read(), value));
+            self.balances.write(to, U256Add::add(self.balances.read(to), value));
         }
-        fn _mint(ref self: ContractState, to: ContractAddress, value: u256){
-            self.total_supply.write(self.total_supply.read() + value);
-            self.balances.write(to, self.balances.read(to) + value);
-        }
-        fn _burn(ref self: ContractAddress, from: ContractAddress, value: u256){
-
-        }
-        
-        fn _update(balance0: u256, balance1: u256, reserve0: u256, reserve1: u256) {
-            assert(balance0 <= (-1).into() && balance1 <= (-1).into(), 'SoraSwap: OVERFLOW');
-            let block_info = starknet::get_block_info().unbox();
-            let block_timestamp = block_info.timestamp % 2**32;
-            let price0_cumulative_last = self.price0_cumulative_last.read();
-            let price1_cumulative_last = self.price1_cumulative_last.read();
-            let k_last = self.k_last.read();
-
-            let block_info = starknet::get_block_info().unbox();
-            // block情報から、現在のtimestampを取得する方法。
-            let time_elapsed = block_info.timestamp - block_timestamp_last;
-            if (time_elapsed > 0 && reserve0 != 0 && reserve1 != 0) {
-                self.price0_cumulative_last.write(price0_cumulative_last + u256((reserve1 * 2**112) / reserve0) * time_elapsed);
-                self.price1_cumulative_last.write(price1_cumulative_last + u256((reserve0 * 2**112) / reserve1) * time_elapsed);
+        fn _mint_fee(ref self: ContractState, reserve0: u256, reserve1: u256) -> bool //fee_on
+        {
+            let fee_to = ISoraswapFactoryDispatcher {
+                contract_address: self.factory.read()
+            }.get_fee_to();
+            if fee_to.is_zero() {
+                return false;
             }
-            self.block_timestamp_last.write(block_info.timestamp);
+            let k_last = self.k_last.read();
+            if (k_last != 0) {
+                let root_k = u256_sqrt(U256Mul::mul(reserve0, reserve1));
+                let root_k_last = u256_sqrt(k_last);
+
+                if root_k > root_k_last {
+                    let numerator = U256Mul::mul(
+                        self.total_supply.read(), (root_k.into() - root_k_last.into())
+                    );
+                    let denominator = U256Mul::mul(root_k.into(), 5) + root_k_last.into();
+                    let liquidity = U256Div::div(numerator, denominator);
+                    if (liquidity > 0) {
+                        self._mint(fee_to, liquidity);
+                    }
+                } else if k_last != 0 {
+                    self.k_last.write(0);
+                }
+            }
+            return true;
+        }
+
+        fn _burn(ref self: ContractState, from: ContractAddress, value: u256) {
+            self.total_supply.write(U256Sub::sub(self.total_supply.read(), value));
+            self.balances.write(from, U256Sub::sub(self.balances.read(from), value));
+        }
+
+        fn _update(
+            ref self: ContractState, balance0: u256, balance1: u256, reserve0: u256, reserve1: u256
+        ) {
+            assert(balance0 <= (-1).into() && balance1 <= (-1).into(), 'OVERFLOW');
+            let k_last = self.k_last.read();
             self.reserve0.write(balance0);
             self.reserve1.write(balance1);
+            self.emit(Event::Sync(Sync { reserve0, reserve1 }));
         }
-
     }
 
     #[generate_trait]
@@ -354,7 +541,7 @@ mod SoraSwapPool {
         ) {
             assert(!spender.is_zero(), 'ERC20: approve from 0');
             self.allowances.write((owner, spender), amount);
-            self.emit(Approval { owner, spender, value: amount });
+            self.emit(Event::Approval(Approval { owner, spender, value: amount }));
         }
     }
 }
