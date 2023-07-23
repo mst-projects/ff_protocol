@@ -145,10 +145,7 @@ mod SoraswapPool {
 
     #[constructor]
     fn constructor(ref self: ContractState) {
-        let factory = self.factory.read();
         self.factory.write(get_caller_address());
-        let new_factory = self.factory.read();
-
         self.minimum_liquidity.write(MINIMUM_LIQUIDITY);
     }
 
@@ -220,7 +217,6 @@ mod SoraswapPool {
                     caller, spender, self.allowances.read((caller, spender)) - subtracted_value
                 );
         }
-
 
         fn initialize(ref self: ContractState, token0: ContractAddress, token1: ContractAddress) {
             assert(starknet::get_caller_address() == self.factory.read(), 'FORBIDDEN');
@@ -348,10 +344,7 @@ mod SoraswapPool {
             let reserve0 = self.reserve0.read();
             let reserve1 = self.reserve1.read();
 
-            assert(
-                amount0_out < reserve0 && amount1_out < reserve1,
-                'INSUFFICIENT_LIQUIDITY'
-            );
+            assert(amount0_out < reserve0 && amount1_out < reserve1, 'INSUFFICIENT_LIQUIDITY');
 
             let contract = starknet::get_contract_address();
 
@@ -386,31 +379,38 @@ mod SoraswapPool {
             balance0 = IERC20Dispatcher { contract_address: token0 }.balance_of(contract);
             balance1 = IERC20Dispatcher { contract_address: token1 }.balance_of(contract);
 
-            let amount0_in = 0;
-            if balance0 > U256Sub(reserve0, amount0_out) {
-                amount0_in = U256Sub::sub(balance0, (U256Sub(reserve0 - amount0_out)); 
-            }
-            if balance1 > U256Sub(reserve1, amount1_out) {
-                amount1_in = U256Sub::sub(balance1, (U256Sub(reserve1 - amount1_out)); 
+            let mut amount0_in = 0;
+            let mut amount1_in = 0;
+            if balance0 > U256Sub::sub(reserve0, amount0_out) {
+                amount0_in = U256Sub::sub(balance0, (U256Sub::sub(reserve0, amount0_out)));
+            };
+            if balance1 > U256Sub::sub(reserve1, amount1_out) {
+                amount1_in = U256Sub::sub(balance1, (U256Sub::sub(reserve1, amount1_out)));
             }
             assert(amount0_in > 0 || amount1_in > 0, 'INSUFFICIENT_INPUT_AMOUNT');
             let balance0_adjusted = U256Sub::sub(U256Mul::mul(balance0, 1000), amount0_in * 3);
             let balance1_adjusted = U256Sub::sub(U256Mul::mul(balance1, 1000), amount1_in * 3);
 
             assert(
-                U256Mul::mul(balance0_adjusted, balance1_adjusted) >= U256::mul(U256Mul::mul(
-                    reserve0, reserve1), 1000**2), 'K');
-            self._update(balance0, balance1, reserve0, reserve1);
-            emit(Event(Swap {
-                sender: starknet::get_caller_address(),
-                amount0In: amount0_in,
-                amount1In: amount1_in,
-                amount0Out: amount0_out,
-                amount1Out: amount1_out,
-                to
-            }))
+                U256Mul::mul(
+                    balance0_adjusted, balance1_adjusted
+                ) >= U256Mul::mul(U256Mul::mul(reserve0, reserve1), 1000 * 1000),
+                'K'
             );
-
+            self._update(balance0, balance1, reserve0, reserve1);
+            self
+                .emit(
+                    Event::Swap(
+                        Swap {
+                            sender: starknet::get_caller_address(),
+                            amount0In: amount0_in,
+                            amount1In: amount1_in,
+                            amount0Out: amount0_out,
+                            amount1Out: amount1_out,
+                            to
+                        }
+                    )
+                );
         }
 
         fn skim(ref self: ContractState, to: ContractAddress) {
