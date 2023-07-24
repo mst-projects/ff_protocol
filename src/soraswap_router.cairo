@@ -367,7 +367,7 @@ mod SoraswapRouter {
             let amount_in_with_fee = amount_in * 997;
             let numerator = amount_in_with_fee * reserve_out;
             let denominator = reserve_in * 1000 + amount_in_with_fee;
-            return numerator / denominator;
+            numerator / denominator
         } //amount_out
 
         fn _get_amounts_out(
@@ -395,7 +395,7 @@ mod SoraswapRouter {
                     i = i + 1;
                 };
             };
-            return amounts.span();
+            amounts.span()
         }
     }
 }
