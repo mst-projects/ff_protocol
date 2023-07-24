@@ -7,23 +7,20 @@ use starknet::Felt252TryIntoContractAddress;
 use cheatcodes::PreparedContract;
 use forge_print::PrintTrait;
 
-use starknet_forge_template::IHelloStarknetSafeDispatcher;
-use starknet_forge_template::IHelloStarknetSafeDispatcherTrait;
+use soraswap::soraswap_factory::ISoraswapFactoryDispatcher;
 
-fn deploy_hello_starknet() -> ContractAddress {// let class_hash = declare('HelloStarknet').unwrap();
-// let prepared = PreparedContract {
-//     class_hash: class_hash, constructor_calldata: @ArrayTrait::new()
-// };
-// let contract_address = deploy(prepared).unwrap();
-
+fn deploy_hello_starknet() -> ContractAddress {
+    let class_hash = declare('SoraswapFactory').unwrap();
+    // let prepared = PreparedContract {
+    //     class_hash: class_hash, constructor_calldata: @ArrayTrait::new()
+    // };
+    // let contract_address = deploy(prepared).unwrap();
+    class_hash.print();
 // let contract_address: ContractAddress = contract_address.try_into().unwrap();
-
-// contract_address
 }
 
 #[test]
-fn test_increase_balance() {// let contract_address = deploy_hello_starknet();
-
+fn test_increase_balance() { // let contract_address = deploy_hello_starknet();
 // let safe_dispatcher = IHelloStarknetSafeDispatcher { contract_address };
 
 // let balance_before = safe_dispatcher.get_balance().unwrap();
@@ -36,8 +33,7 @@ fn test_increase_balance() {// let contract_address = deploy_hello_starknet();
 }
 
 #[test]
-fn test_cannot_increase_balance_with_zero_value() {// let contract_address = deploy_hello_starknet();
-
+fn test_cannot_increase_balance_with_zero_value() { // let contract_address = deploy_hello_starknet();
 // let safe_dispatcher = IHelloStarknetSafeDispatcher { contract_address };
 
 // let balance_before = safe_dispatcher.get_balance().unwrap();

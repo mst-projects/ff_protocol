@@ -3,3 +3,6 @@ mod soraswap_factory;
 mod soraswap_pool;
 mod soraswap_router;
 mod libraries;
+
+#[cfg(test)]
+mod tests;
