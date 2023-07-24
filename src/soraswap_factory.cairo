@@ -5,8 +5,12 @@ trait ISoraswapFactory<TContractState> {
     fn create_pool(
         ref self: TContractState, token_a: ContractAddress, token_b: ContractAddress
     ) -> ContractAddress;
+    // give inputs unsorted to the getter function
     fn set_fee_to(ref self: TContractState, fee_to: ContractAddress);
     fn set_fee_to_setter(ref self: TContractState, fee_to_setter: ContractAddress);
+    fn get_pool_by_tokens(
+        self: @TContractState, token_a: ContractAddress, token_b: ContractAddress
+    ) -> ContractAddress;
     fn get_fee_to(self: @TContractState) -> ContractAddress;
     fn get_fee_to_setter(self: @TContractState) -> ContractAddress;
 }
@@ -121,6 +125,13 @@ mod SoraswapFactory {
                 starknet::get_caller_address() == self.fee_to_setter.read(), 'Soraswap: FORBIDDEN'
             );
             self.fee_to_setter.write(fee_to_setter);
+        }
+
+        fn get_pool_by_tokens(
+            self: @ContractState, token_a: ContractAddress, token_b: ContractAddress
+        ) -> ContractAddress {
+            assert(token_a != token_b, 'IDENTICAL_ADDRESSES');
+            return self.pool_by_tokens.read((token_a, token_b));
         }
 
         fn get_fee_to(self: @ContractState) -> ContractAddress {

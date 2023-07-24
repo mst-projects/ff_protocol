@@ -45,22 +45,15 @@ trait ISoraswapPool<TContractState> {
 
 #[starknet::contract]
 mod SoraswapPool {
-    use zeroable::Zeroable;
     use starknet::ContractAddress;
-    use starknet::get_block_timestamp;
-    use starknet::contract_address::ContractAddressZeroable;
+    // use starknet::contract_address::ContractAddressZeroable;
     use starknet::{get_contract_address, get_caller_address};
     use starknet::class_hash::ClassHash;
 
-    use core::traits::{TryInto, Into};
-    use core::ec;
-    use core::serde::Serde;
-
     use array::{ArrayTCloneImpl, SpanSerde, ArrayTrait, SpanTrait};
-    use clone::Clone;
     use integer::{U256Add, U256Sub, U256Mul, U256Div};
-    use option::{OptionTrait, OptionTraitImpl};
-    use result::ResultTrait;
+    use traits::{TryInto, Into};
+    use zeroable::Zeroable;
 
     use soraswap::soraswap_erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use soraswap::soraswap_factory::{ISoraswapFactoryDispatcher, ISoraswapFactoryDispatcherTrait};
@@ -501,7 +494,7 @@ mod SoraswapPool {
         fn _update(
             ref self: ContractState, balance0: u256, balance1: u256, reserve0: u256, reserve1: u256
         ) {
-            assert(balance0 <= (-1).into() && balance1 <= (-1).into(), 'OVERFLOW');
+            assert(balance0 <= (1 - 0).into() && balance1 <= (1 - 0).into(), 'OVERFLOW');
             let k_last = self.k_last.read();
             self.reserve0.write(balance0);
             self.reserve1.write(balance1);

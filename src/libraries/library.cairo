@@ -18,10 +18,6 @@ trait ISoraswapCallee<TContractState> {
 }
 
 trait SoraswapLibrary {
-    fn get_reserves() -> (u256, u256);
-    fn pair_for(
-        factory: ContractAddress, token_a: ContractAddress, token_b: ContractAddress, 
-    ) -> ContractAddress;
     fn sort_tokens(
         token_a: ContractAddress, token_b: ContractAddress, 
     ) -> (ContractAddress, ContractAddress);
@@ -43,20 +39,5 @@ impl SoraswapLibraryImpl of SoraswapLibrary { // fetches and sorts the reserves 
             return (token_b, token_a);
         }
     }
-
-    fn get_reserves() -> (u256, u256) {
-        let (token0, _token1) = self.sort_tokens(token_a, token_b);
-        let (reserve0, reserve1, ) = ISoraswapPoolDispatcher(pairFor(factory, token_a, token_b))
-            .get_reserves();
-    }
-// calculates the CREATE2 address for a pair without making any external calls
-// fn pool_for(
-//     factory: ContractAddress,
-//     token_a: ContractAddress,
-//     token_b: ContractAddress,
-// ) -> ContractAddress {
-//     let (token0, token1) = sort_tokens(token_a, token_b);  
-// }
-
 }
 
