@@ -2,29 +2,33 @@ use starknet::ContractAddress;
 
 #[starknet::interface]
 trait IERC20<TContractState> {
-    fn get_name(self: @TContractState) -> felt252;
-    fn get_symbol(self: @TContractState) -> felt252;
-    fn get_decimals(self: @TContractState) -> u8;
-    fn get_total_supply(self: @TContractState) -> u256;
+    fn name(self: @TContractState) -> felt252;
+    fn symbol(self: @TContractState) -> felt252;
+    fn decimals(self: @TContractState) -> u8;
+    fn total_supply(self: @TContractState) -> u256;
     fn balance_of(self: @TContractState, account: ContractAddress) -> u256;
     fn allowance(self: @TContractState, owner: ContractAddress, spender: ContractAddress) -> u256;
-    fn transfer(ref self: TContractState, recipient: ContractAddress, amount: u256);
+
+    // returns true if the call succeeded: for transfer, transfer_from and approve
+    fn transfer(ref self: TContractState, recipient: ContractAddress, amount: u256) -> bool;
     fn transfer_from(
         ref self: TContractState, sender: ContractAddress, recipient: ContractAddress, amount: u256
-    );
-    fn approve(ref self: TContractState, spender: ContractAddress, amount: u256);
-    fn increase_allowance(ref self: TContractState, spender: ContractAddress, added_value: u256);
+    ) -> bool;
+    fn approve(ref self: TContractState, spender: ContractAddress, amount: u256) -> bool;
+    fn increase_allowance(
+        ref self: TContractState, spender: ContractAddress, added_value: u256
+    ) -> bool;
     fn decrease_allowance(
         ref self: TContractState, spender: ContractAddress, subtracted_value: u256
-    );
+    ) -> bool;
 }
 
 #[starknet::contract]
 mod ERC20 {
-    use zeroable::Zeroable;
-    use starknet::get_caller_address;
-    use starknet::contract_address_const;
     use starknet::ContractAddress;
+    use starknet::contract_address_const;
+    use starknet::get_caller_address;
+    use zeroable::Zeroable;
 
     #[storage]
     struct Storage {
@@ -55,6 +59,7 @@ mod ERC20 {
         value: u256,
     }
 
+    //todo: Whether we should include decimals and initial supply? Instead, no _mint function is provided.
     #[constructor]
     fn constructor(
         ref self: ContractState,
@@ -67,7 +72,7 @@ mod ERC20 {
         self.name.write(name_);
         self.symbol.write(symbol_);
         self.decimals.write(decimals_);
-        assert(!recipient.is_zero(), 'ERC20: mint to the 0 address');
+        assert(!recipient.is_zero(), 'mint to the 0 address');
         self.total_supply.write(initial_supply);
         self.balances.write(recipient, initial_supply);
         self
@@ -81,20 +86,20 @@ mod ERC20 {
     }
 
     #[external(v0)]
-    impl IERC20Impl of super::IERC20<ContractState> {
-        fn get_name(self: @ContractState) -> felt252 {
+    impl ERC20Impl of super::IERC20<ContractState> {
+        fn name(self: @ContractState) -> felt252 {
             self.name.read()
         }
 
-        fn get_symbol(self: @ContractState) -> felt252 {
+        fn symbol(self: @ContractState) -> felt252 {
             self.symbol.read()
         }
 
-        fn get_decimals(self: @ContractState) -> u8 {
+        fn decimals(self: @ContractState) -> u8 {
             self.decimals.read()
         }
 
-        fn get_total_supply(self: @ContractState) -> u256 {
+        fn total_supply(self: @ContractState) -> u256 {
             self.total_supply.read()
         }
 
@@ -108,9 +113,10 @@ mod ERC20 {
             self.allowances.read((owner, spender))
         }
 
-        fn transfer(ref self: ContractState, recipient: ContractAddress, amount: u256) {
+        fn transfer(ref self: ContractState, recipient: ContractAddress, amount: u256) -> bool {
             let sender = get_caller_address();
             self.transfer_helper(sender, recipient, amount);
+            true
         }
 
         fn transfer_from(
@@ -118,35 +124,38 @@ mod ERC20 {
             sender: ContractAddress,
             recipient: ContractAddress,
             amount: u256
-        ) {
+        ) -> bool {
             let caller = get_caller_address();
             self.spend_allowance(sender, caller, amount);
             self.transfer_helper(sender, recipient, amount);
+            true
         }
 
-        fn approve(ref self: ContractState, spender: ContractAddress, amount: u256) {
+        fn approve(ref self: ContractState, spender: ContractAddress, amount: u256) -> bool {
             let caller = get_caller_address();
             self.approve_helper(caller, spender, amount);
+            true
         }
-
         fn increase_allowance(
             ref self: ContractState, spender: ContractAddress, added_value: u256
-        ) {
+        ) -> bool {
             let caller = get_caller_address();
             self
                 .approve_helper(
                     caller, spender, self.allowances.read((caller, spender)) + added_value
                 );
+            true
         }
 
         fn decrease_allowance(
             ref self: ContractState, spender: ContractAddress, subtracted_value: u256
-        ) {
+        ) -> bool {
             let caller = get_caller_address();
             self
                 .approve_helper(
                     caller, spender, self.allowances.read((caller, spender)) - subtracted_value
                 );
+            true
         }
     }
 
@@ -180,7 +189,8 @@ mod ERC20 {
         fn approve_helper(
             ref self: ContractState, owner: ContractAddress, spender: ContractAddress, amount: u256
         ) {
-            assert(!spender.is_zero(), 'ERC20: approve from 0');
+            assert(!owner.is_zero(), 'ERC20: approve from 0');
+            assert(!spender.is_zero(), 'ERC20: approve to 0');
             self.allowances.write((owner, spender), amount);
             self.emit(Approval { owner, spender, value: amount });
         }

@@ -82,6 +82,7 @@ mod Pool {
         k_last: u256,
     }
 
+    //todo: #[key]をつけるか否かは、solidityのコードを見て判断する。
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
