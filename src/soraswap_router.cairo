@@ -83,7 +83,7 @@ mod SoraswapRouter {
     use soraswap::soraswap_erc20::IERC20Dispatcher;
     use soraswap::soraswap_erc20::IERC20DispatcherTrait;
     use soraswap::soraswap_pool::{ISoraswapPoolDispatcher, ISoraswapPoolDispatcherTrait};
-    use soraswap::soraswap_factory::{ISoraswapFactoryDispatcher, ISoraswapFactoryDispatcherTrait};
+    use soraswap::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
 
     #[storage]
     struct Storage {
@@ -108,7 +108,7 @@ mod SoraswapRouter {
         ) -> (u256, u256, u256) {
             let caller = starknet::get_caller_address();
             let contract = starknet::get_contract_address();
-            let pool = ISoraswapFactoryDispatcher {
+            let pool = IFactoryDispatcher {
                 contract_address: self.factory.read()
             }.get_pool_by_tokens(token_a, token_b);
             assert(pool.is_non_zero(), 'POOL_NOT_EXIST');
@@ -148,7 +148,7 @@ mod SoraswapRouter {
             deadline: u256,
         ) -> (u256, u256) {
             let caller = starknet::get_caller_address();
-            let pool = ISoraswapFactoryDispatcher {
+            let pool = IFactoryDispatcher {
                 contract_address: self.factory.read()
             }.get_pool_by_tokens(token_a, token_b);
             assert(pool.is_non_zero(), 'POOL_NOT_EXIST');
@@ -238,7 +238,7 @@ mod SoraswapRouter {
             assert(
                 amounts[amounts.len() - 1].clone() >= amount_out_min, 'INSUFFICIENT_OUTPUT_AMOUNT'
             );
-            let pool = ISoraswapFactoryDispatcher {
+            let pool = IFactoryDispatcher {
                 contract_address: self.factory.read()
             }.get_pool_by_tokens(path[0].clone(), path[1].clone());
             ISoraswapPoolDispatcher {
@@ -288,7 +288,7 @@ mod SoraswapRouter {
         {
             let factory: ContractAddress = self.factory.read();
             assert(
-                ISoraswapFactoryDispatcher {
+                IFactoryDispatcher {
                     contract_address: factory
                 }.get_pool_by_tokens(token_a, token_b).is_non_zero(),
                 'PAIR_NOT_EXIST'
@@ -340,12 +340,12 @@ mod SoraswapRouter {
                     } else {
                         (amount_out, @0.into())
                     };
-                    let pool = ISoraswapFactoryDispatcher {
+                    let pool = IFactoryDispatcher {
                         contract_address: self.factory.read()
                     }.get_pool_by_tokens(input, output);
                     let data = ArrayTrait::<felt252>::new().span();
                     let to_for_each_swap = if i < path_length - 2 {
-                        ISoraswapFactoryDispatcher {
+                        IFactoryDispatcher {
                             contract_address: self.factory.read()
                         }.get_pool_by_tokens(output, path[i + 2].clone())
                     } else {
@@ -383,7 +383,7 @@ mod SoraswapRouter {
                 if (i >= path_length - 1) {
                     break;
                 } else {
-                    let pool = ISoraswapFactoryDispatcher {
+                    let pool = IFactoryDispatcher {
                         contract_address: self.factory.read()
                     }.get_pool_by_tokens(path[i].clone(), path[i + 1].clone());
                     assert(pool.is_zero(), 'POOL_NOT_EXIST');

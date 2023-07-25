@@ -56,7 +56,7 @@ mod SoraswapPool {
     use zeroable::Zeroable;
 
     use soraswap::soraswap_erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
-    use soraswap::soraswap_factory::{ISoraswapFactoryDispatcher, ISoraswapFactoryDispatcherTrait};
+    use soraswap::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
     use soraswap::libraries::library::{ISoraswapCalleeDispatcher, ISoraswapCalleeDispatcherTrait};
 
     const MINIMUM_LIQUIDITY: u128 = 1000;
@@ -143,7 +143,7 @@ mod SoraswapPool {
     }
 
     #[external(v0)]
-    impl ISoraswapPoolImpl of super::ISoraswapPool<ContractState> {
+    impl SoraswapPoolImpl of super::ISoraswapPool<ContractState> {
         fn get_name(self: @ContractState) -> felt252 {
             self.name.read()
         }
@@ -431,7 +431,7 @@ mod SoraswapPool {
 
         // getters
         fn get_factory(self: @ContractState) -> ContractAddress {
-            return self.factory.read();
+            self.factory.read()
         }
 
         fn get_token0(self: @ContractState) -> ContractAddress {
@@ -459,9 +459,7 @@ mod SoraswapPool {
         }
         fn _mint_fee(ref self: ContractState, reserve0: u256, reserve1: u256) -> bool //fee_on
         {
-            let fee_to = ISoraswapFactoryDispatcher {
-                contract_address: self.factory.read()
-            }.get_fee_to();
+            let fee_to = IFactoryDispatcher { contract_address: self.factory.read() }.get_fee_to();
             if fee_to.is_zero() {
                 return false;
             }
@@ -483,7 +481,7 @@ mod SoraswapPool {
                     self.k_last.write(0);
                 }
             }
-            return true;
+            true
         }
 
         fn _burn(ref self: ContractState, from: ContractAddress, value: u256) {
@@ -503,7 +501,7 @@ mod SoraswapPool {
     }
 
     #[generate_trait]
-    impl StorageImpl of StorageTrait {
+    impl ERC20Impl of ERC20Trait {
         fn transfer_helper(
             ref self: ContractState,
             sender: ContractAddress,
