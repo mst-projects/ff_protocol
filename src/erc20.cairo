@@ -20,7 +20,7 @@ trait IERC20<TContractState> {
 }
 
 #[starknet::contract]
-mod erc_20 {
+mod ERC20 {
     use zeroable::Zeroable;
     use starknet::get_caller_address;
     use starknet::contract_address_const;
@@ -151,7 +151,7 @@ mod erc_20 {
     }
 
     #[generate_trait]
-    impl StorageImpl of StorageTrait {
+    impl InternalImpl of InternalTrait {
         fn transfer_helper(
             ref self: ContractState,
             sender: ContractAddress,

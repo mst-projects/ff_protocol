@@ -1,7 +1,7 @@
 use starknet::ContractAddress;
 
 #[starknet::interface]
-trait ISoraswapRouter<TContractState> {
+trait IRouter<TContractState> {
     fn add_liquidity(
         ref self: TContractState,
         token_a: ContractAddress,
@@ -69,7 +69,7 @@ trait ISoraswapRouter<TContractState> {
 }
 
 #[starknet::contract]
-mod SoraswapRouter {
+mod Router {
     use starknet::ContractAddress;
     use starknet::get_caller_address;
 
@@ -80,9 +80,9 @@ mod SoraswapRouter {
     use zeroable::Zeroable;
 
     use soraswap::libraries::library::SoraswapLibrary;
-    use soraswap::soraswap_erc20::IERC20Dispatcher;
-    use soraswap::soraswap_erc20::IERC20DispatcherTrait;
-    use soraswap::soraswap_pool::{ISoraswapPoolDispatcher, ISoraswapPoolDispatcherTrait};
+    use soraswap::erc20::IERC20Dispatcher;
+    use soraswap::erc20::IERC20DispatcherTrait;
+    use soraswap::pool::{IPoolDispatcher, IPoolDispatcherTrait};
     use soraswap::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
 
     #[storage]
@@ -94,7 +94,7 @@ mod SoraswapRouter {
     // reserveは、各生トークンが、poolにデポジットされている量
 
     #[external(v0)]
-    impl ISoraswapRouterImpl of super::ISoraswapRouter<ContractState> {
+    impl RouterImpl of super::IRouter<ContractState> {
         fn add_liquidity(
             ref self: ContractState,
             token_a: ContractAddress,
@@ -133,7 +133,7 @@ mod SoraswapRouter {
             }.transfer_from(caller, contract, amount_b);
 
             //預け証のトークンを発行する。
-            let liquidty = ISoraswapPoolDispatcher { contract_address: pool,  }.mint(to);
+            let liquidty = IPoolDispatcher { contract_address: pool,  }.mint(to);
             return (amount_a, amount_b, liquidty);
         }
         // "ensure deadlineも実装する必要がある。"
@@ -152,10 +152,8 @@ mod SoraswapRouter {
                 contract_address: self.factory.read()
             }.get_pool_by_tokens(token_a, token_b);
             assert(pool.is_non_zero(), 'POOL_NOT_EXIST');
-            ISoraswapPoolDispatcher {
-                contract_address: pool
-            }.transfer_from(caller, pool, liquidity);
-            let (amount0, amount1) = ISoraswapPoolDispatcher { contract_address: pool }.burn(to);
+            IPoolDispatcher { contract_address: pool }.transfer_from(caller, pool, liquidity);
+            let (amount0, amount1) = IPoolDispatcher { contract_address: pool }.burn(to);
             let (token0, token1) = self._sort_tokens(token_a, token_b);
             let (amount_a, amount_b) = if token_a == token0 {
                 (amount0, amount1)
@@ -241,7 +239,7 @@ mod SoraswapRouter {
             let pool = IFactoryDispatcher {
                 contract_address: self.factory.read()
             }.get_pool_by_tokens(path[0].clone(), path[1].clone());
-            ISoraswapPoolDispatcher {
+            IPoolDispatcher {
                 contract_address: pool
             }.transfer_from(starknet::get_caller_address(), pool, amounts[0].clone());
             self._swap(amounts, path.span(), to);
@@ -294,9 +292,7 @@ mod SoraswapRouter {
                 'PAIR_NOT_EXIST'
             );
 
-            let (reserve_a, reserve_b) = ISoraswapPoolDispatcher {
-                contract_address: pool
-            }.get_reserves();
+            let (reserve_a, reserve_b) = IPoolDispatcher { contract_address: pool }.get_reserves();
             //reserveが0の場合は、amount_a_desired, amount_b_desiredをそのまま返す
             // token_aとtoken_bのうち、optimalより大きいほうの値をoptimalに切り下げて、逆のトークンはdesiredの値のまま使う。
             if (reserve_a == 0 && reserve_b == 0) {
@@ -351,7 +347,7 @@ mod SoraswapRouter {
                     } else {
                         to
                     };
-                    ISoraswapPoolDispatcher {
+                    IPoolDispatcher {
                         contract_address: pool
                     }.swap(amount0_out.clone(), amount1_out.clone(), data, to_for_each_swap);
                     i = i + 1;
@@ -387,7 +383,7 @@ mod SoraswapRouter {
                         contract_address: self.factory.read()
                     }.get_pool_by_tokens(path[i].clone(), path[i + 1].clone());
                     assert(pool.is_zero(), 'POOL_NOT_EXIST');
-                    let (reserve_in, reserve_out) = ISoraswapPoolDispatcher {
+                    let (reserve_in, reserve_out) = IPoolDispatcher {
                         contract_address: pool
                     }.get_reserves();
                     amounts

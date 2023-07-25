@@ -2,14 +2,16 @@ use array::{ArrayTrait, SpanTrait};
 use starknet::ContractAddress;
 
 #[starknet::interface]
-trait ISoraswapPool<TContractState> {
-    // For SoraswapIERC20
+trait IPool<TContractState> {
+    // Getters for IERC20-related states
     fn get_name(self: @TContractState) -> felt252;
     fn get_symbol(self: @TContractState) -> felt252;
     fn get_decimals(self: @TContractState) -> u8;
     fn get_total_supply(self: @TContractState) -> u256;
     fn balance_of(self: @TContractState, account: ContractAddress) -> u256;
     fn allowance(self: @TContractState, owner: ContractAddress, spender: ContractAddress) -> u256;
+
+    // Writer functions for IERC20-related states
     fn transfer(ref self: TContractState, recipient: ContractAddress, amount: u256);
     fn transfer_from(
         ref self: TContractState, sender: ContractAddress, recipient: ContractAddress, amount: u256
@@ -35,8 +37,9 @@ trait ISoraswapPool<TContractState> {
     );
     fn sync(ref self: TContractState);
 
-    // getter
+    // Getters for Pool-related states
     fn get_factory(self: @TContractState) -> ContractAddress;
+    fn get_minimum_liquidity(self: @TContractState) -> u256;
     fn get_token0(self: @TContractState) -> ContractAddress;
     fn get_token1(self: @TContractState) -> ContractAddress;
     fn get_reserves(self: @TContractState) -> (u256, u256);
@@ -44,26 +47,27 @@ trait ISoraswapPool<TContractState> {
 }
 
 #[starknet::contract]
-mod SoraswapPool {
+mod Pool {
     use starknet::ContractAddress;
     // use starknet::contract_address::ContractAddressZeroable;
     use starknet::{get_contract_address, get_caller_address};
-    use starknet::class_hash::ClassHash;
+    // use starknet::class_hash::ClassHash;
+    use starknet::contract_address_const;
 
     use array::{ArrayTCloneImpl, SpanSerde, ArrayTrait, SpanTrait};
     use integer::{U256Add, U256Sub, U256Mul, U256Div};
     use traits::{TryInto, Into};
     use zeroable::Zeroable;
 
-    use soraswap::soraswap_erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
+    use soraswap::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use soraswap::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
     use soraswap::libraries::library::{ISoraswapCalleeDispatcher, ISoraswapCalleeDispatcherTrait};
 
-    const MINIMUM_LIQUIDITY: u128 = 1000;
+    const MINIMUM_LIQUIDITY: u256 = 1000;
 
     #[storage] //structは明示しない限り、外からアクセスできないという理解で良いか。
     struct Storage {
-        minimum_liquidity: u128,
+        minimum_liquidity: u256,
         name: felt252,
         symbol: felt252,
         decimals: u8,
@@ -81,7 +85,6 @@ mod SoraswapPool {
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
-        #[key]
         Swap: Swap,
         Mint: Mint,
         Burn: Burn,
@@ -143,7 +146,7 @@ mod SoraswapPool {
     }
 
     #[external(v0)]
-    impl SoraswapPoolImpl of super::ISoraswapPool<ContractState> {
+    impl PoolImpl of super::IPool<ContractState> {
         fn get_name(self: @ContractState) -> felt252 {
             self.name.read()
         }
@@ -210,9 +213,9 @@ mod SoraswapPool {
                     caller, spender, self.allowances.read((caller, spender)) - subtracted_value
                 );
         }
-
+        // todo: if token0 == token1, then what happens?
         fn initialize(ref self: ContractState, token0: ContractAddress, token1: ContractAddress) {
-            assert(starknet::get_caller_address() == self.factory.read(), 'FORBIDDEN');
+            assert(get_caller_address() == self.factory.read(), 'P Should be called from factory');
             self.token0.write(token0);
             self.token1.write(token1);
         }
@@ -221,8 +224,8 @@ mod SoraswapPool {
         // 現実にdepositされている残高はbalanceと観念され、スマコンに記録されている残高は、reserveと観念される。 add liquidity
         fn mint(ref self: ContractState, to: ContractAddress) -> u256 //liquidity
         {
-            let zero_address: ContractAddress = Zeroable::zero();
-            let contract = starknet::get_contract_address();
+            let zero_address = contract_address_const::<0>();
+            let contract = get_contract_address();
             let reserve0 = self.reserve0.read();
             let reserve1 = self.reserve1.read();
 
@@ -234,8 +237,8 @@ mod SoraswapPool {
             }.balance_of(contract);
 
             // safe mathを導入する。下記のamountは追加されたトークンの量を表す。
-            let amount0 = balance0 - reserve0;
-            let amount1 = balance1 - reserve1;
+            let amount0 = U256Sub::sub(balance0, reserve0);
+            let amount1 = U256Sub::sub(balance1, reserve1);
 
             // if protocol fee is on
             let fee_on = self._mint_fee(reserve0, reserve1);
@@ -243,12 +246,12 @@ mod SoraswapPool {
             // total supplyは、Liquidity Tokenの発行前の数量を示す。
             let total_supply = self.total_supply.read();
 
-            let minimum_liquidity: u128 = self.minimum_liquidity.read();
+            let minimum_liquidity: u256 = self.minimum_liquidity.read();
 
             let mut liquidity = 0_u256;
             //sqrtをどのように実装するか。
             if total_supply == 0 {
-                liquidity = (u256_sqrt(amount0 * amount1) - minimum_liquidity).into();
+                liquidity = u256_sqrt(amount0 * amount1).into() - minimum_liquidity;
                 assert(liquidity > 0, 'INSUFFICIENT_LIQUIDITY_MINTED');
 
                 self
@@ -272,7 +275,7 @@ mod SoraswapPool {
                 self.k_last.write(reserve0 * reserve1);
             }
             self.emit(Event::Mint(Mint { sender: get_caller_address(), amount0, amount1 }));
-            return liquidity;
+            liquidity
         }
 
         // This function is expected to be called atomically after the caller sends liquidity tokens to the pool contract 
@@ -434,24 +437,61 @@ mod SoraswapPool {
             self.factory.read()
         }
 
+        fn get_minimum_liquidity(self: @ContractState) -> u256 {
+            self.minimum_liquidity.read()
+        }
+
         fn get_token0(self: @ContractState) -> ContractAddress {
-            return self.token0.read();
+            self.token0.read()
         }
 
         fn get_token1(self: @ContractState) -> ContractAddress {
-            return self.token1.read();
+            self.token1.read()
         }
         fn get_reserves(self: @ContractState) -> (u256, u256) {
-            return (self.reserve0.read(), self.reserve1.read());
+            (self.reserve0.read(), self.reserve1.read())
         }
 
         fn get_k_last(self: @ContractState) -> u256 {
-            return self.k_last.read();
+            self.k_last.read()
         }
     }
 
     #[generate_trait]
-    impl SoraswapERC20PrivateImpl of SoraswapERC20PrivateTrait {
+    impl InternalImpl of InternalTrait {
+        fn transfer_helper(
+            ref self: ContractState,
+            sender: ContractAddress,
+            recipient: ContractAddress,
+            amount: u256
+        ) {
+            assert(!sender.is_zero(), 'ERC20: transfer from 0');
+            assert(!recipient.is_zero(), 'ERC20: transfer to 0');
+            self.balances.write(sender, self.balances.read(sender) - amount);
+            self.balances.write(recipient, self.balances.read(recipient) + amount);
+            self.emit(Transfer { from: sender, to: recipient, value: amount });
+        }
+
+        fn spend_allowance(
+            ref self: ContractState, owner: ContractAddress, spender: ContractAddress, amount: u256
+        ) {
+            let current_allowance = self.allowances.read((owner, spender));
+            let ONES_MASK = 0xffffffffffffffffffffffffffffffff_u128;
+            let is_unlimited_allowance = current_allowance.low == ONES_MASK
+                && current_allowance.high == ONES_MASK;
+            if !is_unlimited_allowance {
+                self.approve_helper(owner, spender, current_allowance - amount);
+            }
+        }
+
+        fn approve_helper(
+            ref self: ContractState, owner: ContractAddress, spender: ContractAddress, amount: u256
+        ) {
+            assert(!spender.is_zero(), 'ERC20: approve from 0');
+            self.allowances.write((owner, spender), amount);
+            self.emit(Event::Approval(Approval { owner, spender, value: amount }));
+        }
+
         // liquidy tokenをpoolコントラクト自身が持っている状況が一時的に生まれている。
         fn _mint(ref self: ContractState, to: ContractAddress, value: u256) {
             self.total_supply.write(U256Add::add(self.total_supply.read(), value));
@@ -489,50 +529,16 @@ mod SoraswapPool {
             self.balances.write(from, U256Sub::sub(self.balances.read(from), value));
         }
 
+        // update reserves according to balances
+        // todo: review whether reverves should be u128 or smaller
         fn _update(
             ref self: ContractState, balance0: u256, balance1: u256, reserve0: u256, reserve1: u256
         ) {
-            assert(balance0 <= (1 - 0).into() && balance1 <= (1 - 0).into(), 'OVERFLOW');
+            assert(balance0 <= (0 - 1).into() && balance1 <= (0 - 1).into(), 'balance overflow');
             let k_last = self.k_last.read();
             self.reserve0.write(balance0);
             self.reserve1.write(balance1);
             self.emit(Event::Sync(Sync { reserve0, reserve1 }));
-        }
-    }
-
-    #[generate_trait]
-    impl ERC20Impl of ERC20Trait {
-        fn transfer_helper(
-            ref self: ContractState,
-            sender: ContractAddress,
-            recipient: ContractAddress,
-            amount: u256
-        ) {
-            assert(!sender.is_zero(), 'ERC20: transfer from 0');
-            assert(!recipient.is_zero(), 'ERC20: transfer to 0');
-            self.balances.write(sender, self.balances.read(sender) - amount);
-            self.balances.write(recipient, self.balances.read(recipient) + amount);
-            self.emit(Transfer { from: sender, to: recipient, value: amount });
-        }
-
-        fn spend_allowance(
-            ref self: ContractState, owner: ContractAddress, spender: ContractAddress, amount: u256
-        ) {
-            let current_allowance = self.allowances.read((owner, spender));
-            let ONES_MASK = 0xffffffffffffffffffffffffffffffff_u128;
-            let is_unlimited_allowance = current_allowance.low == ONES_MASK
-                && current_allowance.high == ONES_MASK;
-            if !is_unlimited_allowance {
-                self.approve_helper(owner, spender, current_allowance - amount);
-            }
-        }
-
-        fn approve_helper(
-            ref self: ContractState, owner: ContractAddress, spender: ContractAddress, amount: u256
-        ) {
-            assert(!spender.is_zero(), 'ERC20: approve from 0');
-            self.allowances.write((owner, spender), amount);
-            self.emit(Event::Approval(Approval { owner, spender, value: amount }));
         }
     }
 }

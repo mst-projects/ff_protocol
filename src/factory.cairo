@@ -30,7 +30,7 @@ mod Factory {
     use starknet::contract_address::ContractAddressZeroable;
     use serde::Serde;
 
-    use soraswap::soraswap_pool::{ISoraswapPoolDispatcher, ISoraswapPoolDispatcherTrait};
+    use soraswap::pool::{IPoolDispatcher, IPoolDispatcherTrait};
 
     // keyをつけるか否かに意味はあるか。
     #[storage]
@@ -102,7 +102,7 @@ mod Factory {
                 class_hash, contract_address_salt, calldata, deploy_from_zero: false, 
             )
                 .unwrap_syscall();
-            ISoraswapPoolDispatcher { contract_address: created_pool }.initialize(token0, token1);
+            IPoolDispatcher { contract_address: created_pool }.initialize(token0, token1);
             self.pool_by_tokens.write((token0, token1), created_pool);
             self
                 .pool_by_tokens

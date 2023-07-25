@@ -4,7 +4,7 @@ use starknet::{TryInto, Into};
 use array::{ArrayTrait, SpanTrait};
 use hash::LegacyHash;
 
-use soraswap::soraswap_pool::ISoraswapPoolDispatcher;
+use soraswap::pool::IPoolDispatcher;
 
 #[starknet::interface]
 trait ISoraswapCallee<TContractState> {
