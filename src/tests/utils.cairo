@@ -1,15 +1,21 @@
-use core::starknet::SyscallResultTrait;
 use starknet::ContractAddress;
 use starknet::class_hash::Felt252TryIntoClassHash;
 use starknet::class_hash::ClassHash;
 use starknet::deploy_syscall;
+use starknet::SyscallResultTrait;
 
-use array::ArrayTrait;
+use array::{ArrayTrait, SpanTrait, SpanCopy, SpanSerde};
+use debug::PrintTrait;
+use option::OptionTrait;
+use serde::Serde;
+use traits::TryInto;
 
-fn deploy(contract_class_hash: ClassHash, calldata: Array<felt252>) -> ContractAddress {
-    let (contract_address, _) = starknet::deploy_syscall(
-        contract_class_hash, 0, calldata.span(), false
+
+fn deploy(class_hash: felt252, calldata: Array<felt252>) -> ContractAddress {
+    let (contract_address, _) = deploy_syscall(
+        class_hash.try_into().unwrap(), 0, calldata.span(), false
     )
         .unwrap_syscall();
+    contract_address.print();
     contract_address
 }

@@ -43,23 +43,18 @@ trait IRouter<TContractState> {
         deadline: u256,
     ) -> Span<u256>;
 
-    // view
+    // Getters
     fn sort_tokens(
         self: @TContractState, token_a: ContractAddress, token_b: ContractAddress, 
     ) -> (ContractAddress, ContractAddress);
-
-    fn quote(
-        self: @TContractState, amount_a: u256, reserve_a: u256, reserve_b: u256, 
-    ) -> u256; // amount_b
-
+    fn get_factory(self: @TContractState) -> ContractAddress;
+    fn quote(self: @TContractState, amount_a: u256, reserve_a: u256, reserve_b: u256, ) -> u256;
     fn get_amount_out(
         self: @TContractState, amount_in: u256, reserve_in: u256, reserve_out: u256, 
-    ) -> u256; //amount_out
-
+    ) -> u256;
     fn get_amount_in(
         self: @TContractState, amount_out: u256, reserve_in: u256, reserve_out: u256, 
     ) -> u256; //amount_in
-
     fn get_amounts_out(
         self: @TContractState, amount_in: u256, path: Span<ContractAddress>, 
     ) -> Span<u256>; //amounts_out
@@ -70,12 +65,13 @@ trait IRouter<TContractState> {
 
 #[starknet::contract]
 mod Router {
-    use starknet::ContractAddress;
-    use starknet::get_caller_address;
-
     use array::{ArrayTrait, SpanTrait};
     use clone::Clone;
     use integer::{U256Add, U256Sub, U256Mul, U256Div};
+    use serde::Serde;
+    use starknet::ContractAddress;
+    use starknet::get_caller_address;
+    use starknet::get_contract_address;
     use traits::{Into};
     use zeroable::Zeroable;
 
@@ -87,11 +83,13 @@ mod Router {
 
     #[storage]
     struct Storage {
-        #[key]
-        factory: ContractAddress,
+        factory: ContractAddress, 
     }
 
-    // reserveは、各生トークンが、poolにデポジットされている量
+    #[constructor]
+    fn constructor(ref self: ContractState, factory: ContractAddress) {
+        self.factory.write(factory);
+    }
 
     #[external(v0)]
     impl RouterImpl of super::IRouter<ContractState> {
@@ -106,12 +104,12 @@ mod Router {
             to: ContractAddress,
             deadline: u256,
         ) -> (u256, u256, u256) {
-            let caller = starknet::get_caller_address();
-            let contract = starknet::get_contract_address();
+            let caller = get_caller_address();
+            let contract = get_contract_address();
             let pool = IFactoryDispatcher {
                 contract_address: self.factory.read()
             }.get_pool_by_tokens(token_a, token_b);
-            assert(pool.is_non_zero(), 'POOL_NOT_EXIST');
+            assert(pool.is_non_zero(), 'pool does not exist');
             let (amount_a, amount_b) = self
                 ._add_liquidity(
                     pool,
@@ -134,7 +132,7 @@ mod Router {
 
             //預け証のトークンを発行する。
             let liquidty = IPoolDispatcher { contract_address: pool,  }.mint(to);
-            return (amount_a, amount_b, liquidty);
+            (amount_a, amount_b, liquidty)
         }
         // "ensure deadlineも実装する必要がある。"
         fn remove_liquidity(
@@ -147,60 +145,61 @@ mod Router {
             to: ContractAddress,
             deadline: u256,
         ) -> (u256, u256) {
-            let caller = starknet::get_caller_address();
+            let caller = get_caller_address();
             let pool = IFactoryDispatcher {
                 contract_address: self.factory.read()
             }.get_pool_by_tokens(token_a, token_b);
-            assert(pool.is_non_zero(), 'POOL_NOT_EXIST');
+            assert(pool.is_non_zero(), 'pool does not exist');
             IPoolDispatcher { contract_address: pool }.transfer_from(caller, pool, liquidity);
             let (amount0, amount1) = IPoolDispatcher { contract_address: pool }.burn(to);
-            let (token0, token1) = self._sort_tokens(token_a, token_b);
+            let (token0, token1) = _sort_tokens(token_a, token_b);
             let (amount_a, amount_b) = if token_a == token0 {
                 (amount0, amount1)
             } else {
                 (amount1, amount0)
             };
-            assert(amount_a >= amount_a_min, 'INSUFFICIENT_A_AMOUNT');
-            assert(amount_b >= amount_b_min, 'INSUFFICIENT_B_AMOUNT');
-            return (amount_a, amount_b);
+            assert(amount_a >= amount_a_min, 'amount_a is insufficient');
+            assert(amount_b >= amount_b_min, 'amount_b is insufficient');
+            (amount_a, amount_b)
         }
 
         //todo it does not refer to states in contract, therefore can move it to Library.
+        // returns sorted token addresses, used to handle return values from pairs sorted in this order
         fn sort_tokens(
             self: @ContractState, token_a: ContractAddress, token_b: ContractAddress, 
         ) -> (ContractAddress, ContractAddress) {
-            return self._sort_tokens(token_a, token_b);
+            _sort_tokens(token_a, token_b)
         }
 
-        // view
-        fn quote(self: @ContractState, amount_a: u256, reserve_a: u256, reserve_b: u256, ) -> u256 {
-            return self._quote(amount_a, reserve_a, reserve_b);
+        // Getters
+        fn get_factory(self: @ContractState) -> ContractAddress {
+            self.factory.read()
         }
 
-        // amount_b
-        // given an out amount of an asset and pair reserves, returns a required amount of the other asset
+        // given some amount of an asset and pair reserves, returns an equivalent value amount of the other asset
+        fn quote(self: @ContractState, amount_a: u256, reserve_a: u256, reserve_b: u256) -> u256 {
+            _quote(amount_a, reserve_a, reserve_b)
+        }
+
+        // given an input amount of an asset and pair reserves, returns the maximum out amount of the other asset. Fee is considered
         fn get_amount_out(
             self: @ContractState, amount_in: u256, reserve_in: u256, reserve_out: u256, 
         ) -> u256 {
-            return self._get_amount_out(amount_in, reserve_in, reserve_out);
-        } //amount_out
+            _get_amount_out(amount_in, reserve_in, reserve_out)
+        }
 
         // given an output amount of an asset and pair reserves, returns a required amount of the other asset
         fn get_amount_in(
             self: @ContractState, amount_out: u256, reserve_in: u256, reserve_out: u256, 
         ) -> u256 {
-            assert(amount_out > 0, 'INSUFFICIENT_OUTPUT_AMOUNT');
-            assert(reserve_in > 0 && reserve_out > 0, 'INSUFFICIENT_LIQUIDITY');
-            let numerator = reserve_in * amount_out * 1000;
-            let denominator = (reserve_out - amount_out) * 997;
-            return (numerator / denominator) + 1;
-        } //amount_in
+            _get_amount_in(amount_out, reserve_in, reserve_out)
+        }
 
-        // performs chained get_amount_out calculations on any number of pairs
+        // performs chained get_amount_out of asset and pair reserves, returns a required input amount of the other asset
         fn get_amounts_out(
             self: @ContractState, amount_in: u256, path: Span<ContractAddress>, 
         ) -> Span<u256> {
-            return self._get_amounts_out(amount_in, path);
+            self._get_amounts_out(amount_in, path)
         }
 
         // fn get_amounts_in(self: @ContractState, amount_out: u256, path: Span<ContractAddress>) -> Span<u256> {
@@ -248,30 +247,7 @@ mod Router {
     }
 
     #[generate_trait]
-    impl LiquidityImpl of LiquidityTrait {
-        // returns sorted token addresses, used to handle return values from pairs sorted in this order
-        fn _sort_tokens(
-            self: @ContractState, token_a: ContractAddress, token_b: ContractAddress, 
-        ) -> (ContractAddress, ContractAddress) {
-            assert(token_a != token_b, 'IDENTICAL_ADDRESSES');
-            let token_a_as_felt: felt252 = token_a.into();
-            let token_b_as_felt: felt252 = token_b.into();
-            let token_a_as_u256: u256 = token_a_as_felt.into();
-            let token_b_as_u256: u256 = token_b_as_felt.into();
-            if token_a_as_u256 < token_b_as_u256 {
-                return (token_a, token_b);
-            } else {
-                return (token_b, token_a);
-            }
-        }
-
-        fn _quote(
-            self: @ContractState, amount_a: u256, reserve_a: u256, reserve_b: u256, 
-        ) -> u256 {
-            assert(amount_a > 0, 'INSUFFICIENT_AMOUNT');
-            assert(reserve_a > 0 && reserve_b > 0, 'INSUFFICIENT_LIQUIDITY');
-            return U256Div::div(U256Mul::mul(amount_a, reserve_b), reserve_a);
-        }
+    impl InternalImpl of InternalTrait {
         // amount,即ち、それぞれのトークンをいくらデポジットするかを算定する関数
         fn _add_liquidity(
             ref self: ContractState,
@@ -282,8 +258,7 @@ mod Router {
             amount_b_desired: u256,
             amount_a_min: u256,
             amount_b_min: u256,
-        ) -> (u256, u256) // amount_a, amount_b
-        {
+        ) -> (u256, u256) {
             let factory: ContractAddress = self.factory.read();
             assert(
                 IFactoryDispatcher {
@@ -299,12 +274,12 @@ mod Router {
                 let (amount_a, amount_b) = (amount_a_desired, amount_b_desired);
                 return (amount_a, amount_b);
             } else {
-                let amount_b_optimal = self._quote(amount_a_desired, reserve_a, reserve_b);
+                let amount_b_optimal = _quote(amount_a_desired, reserve_a, reserve_b);
                 if (amount_b_optimal <= amount_b_desired) {
                     assert(amount_b_optimal >= amount_b_min, 'INSUFFICIENT_B_AMOUNT');
                     return (amount_a_desired, amount_b_optimal);
                 } else {
-                    let amount_a_optimal = self._quote(amount_b_desired, reserve_b, reserve_a);
+                    let amount_a_optimal = _quote(amount_b_desired, reserve_b, reserve_a);
                     assert(amount_a_optimal <= amount_a_desired, 'INSUFFICIENT_A_AMOUNT');
                     assert(amount_a_optimal >= amount_a_min, 'INSUFFICIENT_A_AMOUNT');
                     return (amount_a_optimal, amount_b_desired);
@@ -321,7 +296,6 @@ mod Router {
             to: ContractAddress,
         ) {
             let path_length = path.len();
-            // for loopの書き方を覚える。
             let mut i: usize = 0;
             loop {
                 if (i >= path_length - 1) {
@@ -329,7 +303,7 @@ mod Router {
                 } else {
                     let (input, output) = (path[i].clone(), path[i + 1].clone());
                     let amount_out = amounts[i + 1];
-                    let (token0, _token1) = self._sort_tokens(input, output);
+                    let (token0, _token1) = _sort_tokens(input, output);
                     // @を使うことにどのような意味があるのか。
                     let (amount0_out, amount1_out) = if input == token0 {
                         (@0.into(), amount_out)
@@ -355,22 +329,11 @@ mod Router {
             };
         }
 
-        fn _get_amount_out(
-            self: @ContractState, amount_in: u256, reserve_in: u256, reserve_out: u256, 
-        ) -> u256 {
-            assert(amount_in > 0, 'INSUFFICIENT_INPUT_AMOUNT');
-            assert(reserve_in > 0 && reserve_out > 0, 'INSUFFICIENT_LIQUIDITY');
-            let amount_in_with_fee = amount_in * 997;
-            let numerator = amount_in_with_fee * reserve_out;
-            let denominator = reserve_in * 1000 + amount_in_with_fee;
-            numerator / denominator
-        } //amount_out
-
         fn _get_amounts_out(
             self: @ContractState, amount_in: u256, path: Span<ContractAddress>, 
         ) -> Span<u256> {
             let path_length = path.len();
-            assert(path_length >= 2, 'INVALID_PATH');
+            assert(path_length >= 2, 'path should be 2 or longer');
             let mut amounts = ArrayTrait::<u256>::new();
             amounts.append(amount_in);
 
@@ -382,16 +345,64 @@ mod Router {
                     let pool = IFactoryDispatcher {
                         contract_address: self.factory.read()
                     }.get_pool_by_tokens(path[i].clone(), path[i + 1].clone());
-                    assert(pool.is_zero(), 'POOL_NOT_EXIST');
+                    assert(pool.is_zero(), 'pool does not exist');
                     let (reserve_in, reserve_out) = IPoolDispatcher {
                         contract_address: pool
                     }.get_reserves();
-                    amounts
-                        .append(self._get_amount_out(amounts[i].clone(), reserve_in, reserve_out));
+                    amounts.append(_get_amount_out(amounts[i].clone(), reserve_in, reserve_out));
                     i = i + 1;
                 };
             };
             amounts.span()
         }
+    }
+
+    fn _quote(amount_a: u256, reserve_a: u256, reserve_b: u256, ) -> u256 {
+        assert(amount_a > 0, 'Amount should be positive');
+        assert(reserve_a > 0, 'reserve_a is zero');
+        assert(reserve_b > 0, 'reserve_b is zero');
+        U256Div::div(
+            U256Mul::mul(amount_a, reserve_b), reserve_a
+        ) // amount_b | 1 amount_a = (reserve_b - reserve_b) units of token_b
+    }
+
+    fn _sort_tokens(
+        token_a: ContractAddress, token_b: ContractAddress, 
+    ) -> (ContractAddress, ContractAddress) {
+        assert(token_a != token_b, 'toekns are identical');
+        //todo: Is it possible to convert to u256 directly witout going througn felt252
+        let token_a_as_felt: felt252 = token_a.into();
+        let token_b_as_felt: felt252 = token_b.into();
+        let token_a_as_u256: u256 = token_a_as_felt.into();
+        let token_b_as_u256: u256 = token_b_as_felt.into();
+        let sorted_tokens = if token_a_as_u256 < token_b_as_u256 {
+            (token_a, token_b)
+        } else {
+            (token_b, token_a)
+        };
+        sorted_tokens
+    }
+
+    fn _get_amount_out(amount_in: u256, reserve_in: u256, reserve_out: u256, ) -> u256 {
+        assert(amount_in > 0, 'amount_in should be positive');
+        assert(reserve_in > 0, 'reserve_in is zero');
+        assert(reserve_out > 0, 'reserve_out is zero');
+        // calc: K before swap: reserve_in * reserve_out = K after swap with fee subtracted: (reserve_in + amount_in - fee) * (reserve_out - amount_out)
+        // amount_out = reserve_in * reserve_out / (reserve_in + amount_in - fee) + reserve_out
+        let amount_in_with_fee = amount_in * 997;
+        // in 追加量 * out reserve = inの取引だけが終わった時点でのkの増加量
+        let numerator = U256Mul::mul(amount_in_with_fee, reserve_out);
+        // swap実行後の in reserve: inの取引だけが終わった時点でのoutの減少量。ただし、正確には、out取引と同時に上記のout reserveが現象するため、分子が減少し、正確には、ここで得られるamount_outよりも小さなamount_outとなる。
+        let denominator = reserve_in * 1000 + amount_in_with_fee;
+        U256Div::div(numerator, denominator)
+    }
+
+    fn _get_amount_in(amount_out: u256, reserve_in: u256, reserve_out: u256, ) -> u256 {
+        assert(amount_out > 0, 'amount_out should be positive');
+        assert(reserve_in > 0, 'reserve_in is zero');
+        assert(reserve_out > 0, 'reserve_out is zero');
+        let numerator = reserve_in * amount_out * 1000;
+        let denominator = (reserve_out - amount_out) * 997;
+        (numerator / denominator) + 1
     }
 }
