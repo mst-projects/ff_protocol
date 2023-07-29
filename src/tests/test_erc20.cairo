@@ -3,8 +3,8 @@ use starknet::ContractAddress;
 use starknet::contract_address_const;
 use starknet::testing::set_caller_address;
 
-use soraswap::erc20::ERC20;
-use soraswap::erc20::ERC20::{ERC20Impl, InternalImpl};
+use field_swap::erc20::ERC20;
+use field_swap::erc20::ERC20::{ERC20Impl, InternalImpl};
 //
 // Constants
 //

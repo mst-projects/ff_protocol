@@ -1,8 +1,3 @@
-use zeroable::Zeroable;
-use starknet::ContractAddress;
-use starknet::contract_address_const;
-use starknet::testing::{set_caller_address, set_contract_address};
-
 use array::{ArrayTrait, SpanTrait, SpanCopy, SpanSerde};
 use option::OptionTrait;
 use debug::PrintTrait;
@@ -10,23 +5,27 @@ use integer::u256_sqrt;
 use integer::{U256Add, U256Sub, U256Mul, U256Div};
 use result::ResultTrait;
 use serde::Serde;
+use starknet::ContractAddress;
+use starknet::contract_address_const;
+use starknet::testing::{set_caller_address, set_contract_address};
 use traits::{Into, TryInto, PartialEq};
+use zeroable::Zeroable;
 
-use soraswap::tests::utils;
-use soraswap::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
-use soraswap::factory::Factory;
-use soraswap::pool::{IPoolDispatcher, IPoolDispatcherTrait};
-use soraswap::pool::Pool;
-use soraswap::pool::Pool::PoolImpl;
-use soraswap::pool::Pool::InternalImpl;
-use soraswap::erc20::ERC20;
-use soraswap::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
+use field_swap::tests::utils;
+use field_swap::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
+use field_swap::factory::Factory;
+use field_swap::pool::{IPoolDispatcher, IPoolDispatcherTrait};
+use field_swap::pool::Pool;
+use field_swap::pool::Pool::PoolImpl;
+use field_swap::pool::Pool::InternalImpl;
+use field_swap::erc20::ERC20;
+use field_swap::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
 
 const DECIMALS: u8 = 18;
 const MINIMUM_LIQUIDITY: u256 = 1000;
 const INITIAL_LIQUIDITY: u256 = 1_000_000_000;
-const NAME: felt252 = 'Soraswap';
-const SYMBOL: felt252 = 'SRS';
+const NAME: felt252 = 'FieldSwap LP';
+const SYMBOL: felt252 = 'FLP';
 
 fn POOL_STATE() -> Pool::ContractState {
     Pool::contract_state_for_testing()

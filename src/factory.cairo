@@ -34,8 +34,8 @@ mod Factory {
     use traits::{Into, TryInto};
     use zeroable::Zeroable;
 
-    use soraswap::libraries::library;
-    use soraswap::pool::{IPoolDispatcher, IPoolDispatcherTrait};
+    use field_swap::libraries::library;
+    use field_swap::pool::{IPoolDispatcher, IPoolDispatcherTrait};
 
     #[storage]
     struct Storage {

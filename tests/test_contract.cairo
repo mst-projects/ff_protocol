@@ -6,22 +6,15 @@ use starknet::ContractAddress;
 use starknet::Felt252TryIntoContractAddress;
 use cheatcodes::PreparedContract;
 use forge_print::PrintTrait;
-
-use soraswap::soraswap_factory::{ISoraswapFactoryDispatcher, ISoraswapFactorySafeDispatcher};
-use soraswap::soraswap_pool::{ISoraswapPoolDispatcher, ISoraswapPoolSafeDispatcher};
-use soraswap::soraswap_router::{ISoraswapRouterDispatcher, ISoraswapRouterSafeDispatcher};
-use soraswap::soraswap_erc20::{ISoraswapERC20Dispatcher, ISoraswapERC20SafeDispatcher};
-
-#[test]
-fn test_contract() -> ContractAddress {
-    let class_hash = declare('SoraswapFactory').unwrap();
-    // let prepared = PreparedContract {
-    //     class_hash: class_hash, constructor_calldata: @ArrayTrait::new()
-    // };
-    // let contract_address = deploy(prepared).unwrap();
-    class_hash.print();
+// #[test]
+// fn test_contract() -> ContractAddress {// let class_hash = declare('Factory').unwrap();
+// // let prepared = PreparedContract {
+//     class_hash: class_hash, constructor_calldata: @ArrayTrait::new()
+// };
+// let contract_address = deploy(prepared).unwrap();
+// class_hash.print();
 // let contract_address: ContractAddress = contract_address.try_into().unwrap();
-}
+// }
 // #[test]
 // fn test_increase_balance() { // let contract_address = deploy_hello_starknet();
 // let safe_dispatcher = IHelloStarknetSafeDispatcher { contract_address };

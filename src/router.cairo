@@ -56,11 +56,11 @@ mod Router {
     use traits::{Into};
     use zeroable::Zeroable;
 
-    use soraswap::libraries::library;
-    use soraswap::erc20::IERC20Dispatcher;
-    use soraswap::erc20::IERC20DispatcherTrait;
-    use soraswap::pool::{IPoolDispatcher, IPoolDispatcherTrait};
-    use soraswap::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
+    use field_swap::libraries::library;
+    use field_swap::erc20::IERC20Dispatcher;
+    use field_swap::erc20::IERC20DispatcherTrait;
+    use field_swap::pool::{IPoolDispatcher, IPoolDispatcherTrait};
+    use field_swap::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
 
     #[storage]
     struct Storage {

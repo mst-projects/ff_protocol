@@ -56,14 +56,14 @@ mod Pool {
     use traits::{TryInto, Into};
     use zeroable::Zeroable;
 
-    use soraswap::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
-    use soraswap::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
-    use soraswap::libraries::library::{ICalleeContractDispatcher, ICalleeContractDispatcherTrait};
+    use field_swap::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
+    use field_swap::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
+    use field_swap::libraries::library::{ICalleeContractDispatcher, ICalleeContractDispatcherTrait};
 
     const DECIMALS: u8 = 18;
     const MINIMUM_LIQUIDITY: u256 = 1000;
-    const NAME: felt252 = 'Soraswap';
-    const SYMBOL: felt252 = 'SRS';
+    const NAME: felt252 = 'FieldSwap LP';
+    const SYMBOL: felt252 = 'FLP';
 
     #[storage] //structは明示しない限り、外からアクセスできないという理解で良いか。
     struct Storage {

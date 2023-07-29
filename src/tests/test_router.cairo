@@ -14,26 +14,23 @@ use traits::{Into, TryInto, PartialEq};
 use zeroable::Zeroable;
 
 
-use soraswap::erc20::ERC20;
-use soraswap::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
-use soraswap::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
-use soraswap::factory::Factory;
-use soraswap::libraries::library;
-use soraswap::pool::{IPoolDispatcher, IPoolDispatcherTrait};
-use soraswap::pool::Pool;
-use soraswap::pool::Pool::PoolImpl;
-use soraswap::router::Router;
-use soraswap::router::Router::RouterImpl;
-use soraswap::router::Router::InternalImpl;
-use soraswap::router::{IRouterDispatcher, IRouterDispatcherTrait};
-use soraswap::tests::utils;
+use field_swap::erc20::ERC20;
+use field_swap::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
+use field_swap::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
+use field_swap::factory::Factory;
+use field_swap::libraries::library;
+use field_swap::pool::{IPoolDispatcher, IPoolDispatcherTrait};
+use field_swap::pool::Pool;
+use field_swap::pool::Pool::PoolImpl;
+use field_swap::router::Router;
+use field_swap::router::Router::RouterImpl;
+use field_swap::router::Router::InternalImpl;
+use field_swap::router::{IRouterDispatcher, IRouterDispatcherTrait};
+use field_swap::tests::utils;
 
 const DECIMALS: u8 = 18;
 const MINIMUM_LIQUIDITY: u256 = 1000;
 const INITIAL_LIQUIDITY: u256 = 1_000_000_000;
-const NAME: felt252 = 'Soraswap';
-const SYMBOL: felt252 = 'SRS';
-
 
 fn POOL_STATE() -> Pool::ContractState {
     Pool::contract_state_for_testing()
