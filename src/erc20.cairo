@@ -1,3 +1,4 @@
+use core::traits::AddEq;
 use starknet::ContractAddress;
 
 #[starknet::interface]
@@ -25,6 +26,7 @@ trait IERC20<TContractState> {
 
 #[starknet::contract]
 mod ERC20 {
+    use debug::PrintTrait;
     use starknet::ContractAddress;
     use starknet::contract_address_const;
     use starknet::get_caller_address;

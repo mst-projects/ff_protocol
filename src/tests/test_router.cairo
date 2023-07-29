@@ -1,22 +1,24 @@
-use core::zeroable::Zeroable;
-use starknet::ContractAddress;
-use starknet::contract_address_const;
-use starknet::testing::{set_caller_address, set_contract_address};
-
 use array::{ArrayTrait, SpanTrait, SpanCopy, SpanSerde};
-use option::OptionTrait;
+use clone::Clone;
 use debug::PrintTrait;
 use integer::u256_sqrt;
 use integer::{U256Add, U256Sub, U256Mul, U256Div};
+use integer::BoundedInt;
+use option::OptionTrait;
 use result::ResultTrait;
 use serde::Serde;
+use starknet::ContractAddress;
+use starknet::contract_address_const;
+use starknet::testing::{set_caller_address, set_contract_address};
 use traits::{Into, TryInto, PartialEq};
+use zeroable::Zeroable;
 
-use soraswap::tests::utils;
+
 use soraswap::erc20::ERC20;
 use soraswap::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
 use soraswap::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
 use soraswap::factory::Factory;
+use soraswap::libraries::library;
 use soraswap::pool::{IPoolDispatcher, IPoolDispatcherTrait};
 use soraswap::pool::Pool;
 use soraswap::pool::Pool::PoolImpl;
@@ -24,6 +26,7 @@ use soraswap::router::Router;
 use soraswap::router::Router::RouterImpl;
 use soraswap::router::Router::InternalImpl;
 use soraswap::router::{IRouterDispatcher, IRouterDispatcherTrait};
+use soraswap::tests::utils;
 
 const DECIMALS: u8 = 18;
 const MINIMUM_LIQUIDITY: u256 = 1000;
@@ -97,7 +100,6 @@ fn deploy_erc20_token(name: felt252) -> ContractAddress {
 
 fn deploy_factory() -> ContractAddress {
     set_caller_address(OWNER());
-
     let mut calldata = ArrayTrait::new();
     Pool::TEST_CLASS_HASH.serialize(ref output: calldata);
     OWNER().serialize(ref output: calldata);
@@ -114,15 +116,25 @@ fn deploy_pool() -> ContractAddress {
     contract_address
 }
 
-fn deploy_router() -> ContractAddress {
+fn deploy_pool_from_factory_contract(factory: ContractAddress) -> ContractAddress {
+    set_caller_address(OWNER());
+    let factory_dispatcher = IFactoryDispatcher { contract_address: factory };
+    set_contract_address(factory);
+    let pool = factory_dispatcher.create_pool(TOKEN_A(), TOKEN_B());
+    'pool'.print();
+    pool.print();
+    pool
+}
+
+fn deploy_router(factory: ContractAddress) -> ContractAddress {
     set_caller_address(ZERO_ADDRESS()); // anyone can deploy router contract
     let mut calldata = ArrayTrait::new();
-    FACTORY().serialize(ref output: calldata);
+    factory.serialize(ref output: calldata);
     let contract_address = utils::deploy(Router::TEST_CLASS_HASH, calldata);
     contract_address
 }
 
-fn initialize_mint() -> (ContractAddress, ContractAddress, ContractAddress) {
+fn initialize_mint() -> (ContractAddress, ContractAddress, ContractAddress, ContractAddress) {
     // Assume factory contract is deployed
     let factory = deploy_factory();
 
@@ -134,8 +146,13 @@ fn initialize_mint() -> (ContractAddress, ContractAddress, ContractAddress) {
     let pool = deploy_pool();
     set_contract_address(FACTORY());
     let pool_dispatcher = IPoolDispatcher { contract_address: pool };
+
+    // for testing purposes, _set_pool_by_tokens in factory contract
+    let factory_dispatcher = IFactoryDispatcher { contract_address: factory };
+    factory_dispatcher._set_pool_by_tokens(token_a, token_b, pool);
+
     pool_dispatcher.initialize(token_a, token_b);
-    (pool, token_a, token_b)
+    (factory, pool, token_a, token_b)
 }
 
 fn process_mint(
@@ -169,7 +186,6 @@ fn process_mint(
 //
 // constructor
 // 
-
 #[test]
 #[available_gas(200_000_000)]
 fn test_constructor() {
@@ -180,37 +196,215 @@ fn test_constructor() {
     let factory = IRouterDispatcher { contract_address: contract_address }.get_factory();
     assert(factory == FACTORY(), 'factory address is incorrect');
 }
+
 //
 // Getters
 //
-
 #[test]
 #[available_gas(200_000_000)]
 fn test_quote() {
-    // let (pool, token_a, token_b) = initialize_mint();
-    // let a_amount = 30_000_000;
-    // let b_amount = 50_000_000;
-    // let (liquidity, total_supply, balance0, balance1, reserve0, reserve1) = process_mint(
-    //     pool, token_a, token_b, a_amount, b_amount
-    // );
-    let router = deploy_router();
-    let router_dispatcher = IRouterDispatcher { contract_address: router };
-    assert(router_dispatcher.quote(100, 500, 100) == 20, 'amount_b is not equivalent');
+    assert(library::quote(100, 500, 100) == 20, 'amount_b is not equivalent');
 }
 
 #[test]
 #[available_gas(200_000_000)]
 fn test_sort_tokens() {
-    let router = deploy_router();
-    let router_dispatcher = IRouterDispatcher { contract_address: router };
-    let (token0, token1) = router_dispatcher.sort_tokens(TOKEN_A(), TOKEN_B());
-    assert(token0 == TOKEN_A() && token1 == TOKEN_B(), 'tokens are not sorted');
-
-    let (token0, token1) = router_dispatcher.sort_tokens(TOKEN_B(), TOKEN_A());
+    let (token0, token1) = library::sort_tokens(TOKEN_B(), TOKEN_A());
     assert(token0 == TOKEN_A() && token1 == TOKEN_B(), 'tokens are not sorted (reverse)');
 }
 
 #[test]
 #[available_gas(200_000_000)]
-fn test_get_amount_out() {}
+fn test_get_amount_out() {
+    let amount_out = library::get_amount_out(50000, 50000, 50000);
+    'amount_out'.print();
+    amount_out.print();
+}
+
+#[test]
+#[available_gas(200_000_000)]
+fn test_get_amount_in() {
+    let amount_in = library::get_amount_in(24962, 50000, 50000);
+    'amount_in'.print();
+    amount_in.print();
+}
+
+#[test]
+#[available_gas(200_000_000)]
+fn test_get_amounts_out() {
+    set_contract_address(OWNER());
+    let (factory, pool, token_a, token_b) = initialize_mint();
+    let pool_dispatcher = IPoolDispatcher { contract_address: pool };
+
+    // Mint
+    let a_amount = 30_000_000;
+    let b_amount = 50_000_000;
+
+    let (liquidity, total_supply, balance0, balance1, reserve0, reserve1) = process_mint(
+        pool, token_a, token_b, a_amount, b_amount
+    );
+    let mut path = ArrayTrait::<ContractAddress>::new();
+    path.append(token_a);
+    path.append(token_b);
+    'path_0'.print();
+    let path_0 = *path.at(0);
+    path_0.print();
+    'path_1'.print();
+    let path_1 = *path.at(1);
+    path_1.print();
+
+    let amounts_out = library::get_amounts_out(factory, 10_000_00, path.span());
+
+    let first_amount = amounts_out.at(0);
+    let second_amount = amounts_out.at(1);
+    'first_amount'.print();
+    (*first_amount).print();
+    'second_amount'.print();
+    (*second_amount).print();
+}
+
+#[test]
+#[available_gas(200_000_000)]
+fn test_get_amounts_in() {
+    set_contract_address(OWNER());
+    let (factory, pool, token_a, token_b) = initialize_mint();
+    let pool_dispatcher = IPoolDispatcher { contract_address: pool };
+
+    // Mint
+    let a_amount = 30_000_000;
+    let b_amount = 50_000_000;
+    let (liquidity, total_supply, balance0, balance1, reserve0, reserve1) = process_mint(
+        pool, token_a, token_b, a_amount, b_amount
+    );
+    let mut path = ArrayTrait::<ContractAddress>::new();
+    path.append(token_a);
+    path.append(token_b);
+    let amounts_in = library::get_amounts_in(factory, 1000, path.span());
+}
+
+#[test]
+#[available_gas(200_000_000)]
+fn test_add_liquidity() {
+    set_contract_address(OWNER());
+    let (factory, pool, token_a, token_b) = initialize_mint();
+    let pool_dispatcher = IPoolDispatcher { contract_address: pool };
+
+    // Mint
+    let a_amount = 30_000_000;
+    let b_amount = 50_000_000;
+
+    let router = deploy_router(factory);
+    let router_dispatcher = IRouterDispatcher { contract_address: router };
+
+    set_caller_address(OWNER());
+    let token_a_dispatcher = IERC20Dispatcher { contract_address: token_a };
+    let token_b_dispatcher = IERC20Dispatcher { contract_address: token_b };
+
+    set_contract_address(OWNER());
+    'router'.print();
+    router.print();
+    token_a_dispatcher.approve(router, 5000);
+    token_b_dispatcher.approve(router, 5000);
+    router_dispatcher.add_liquidity(token_a, token_b, 5_000, 5_000, 0, 0, OWNER(), 166633333);
+}
+
+#[test]
+#[available_gas(200_000_000)]
+fn test_swap_exact_tokens_for_tokens() {
+    set_contract_address(OWNER());
+    let (factory, pool, token_a, token_b) = initialize_mint();
+    let pool_dispatcher = IPoolDispatcher { contract_address: pool };
+
+    // Mint
+    let a_amount = 30_000_000;
+    let b_amount = 50_000_000;
+
+    let router = deploy_router(factory);
+    let router_dispatcher = IRouterDispatcher { contract_address: router };
+
+    set_caller_address(OWNER());
+    let token_a_dispatcher = IERC20Dispatcher { contract_address: token_a };
+    let token_b_dispatcher = IERC20Dispatcher { contract_address: token_b };
+
+    set_contract_address(OWNER());
+    'router'.print();
+    router.print();
+    token_a_dispatcher.approve(router, BoundedInt::max());
+    token_b_dispatcher.approve(router, BoundedInt::max());
+    router_dispatcher.add_liquidity(token_a, token_b, 5_000, 5_000, 0, 0, OWNER(), 166633333);
+
+    let mut path = ArrayTrait::<ContractAddress>::new();
+    path.append(token_a);
+    path.append(token_b);
+    set_contract_address(OWNER());
+    router_dispatcher.swap_exact_tokens_for_tokens(2000, 0, path, OWNER(), 166633333);
+}
+#[test]
+#[available_gas(200_000_000)]
+fn test_swap_tokens_for_exact_tokens() {
+    set_contract_address(OWNER());
+    let (factory, pool, token_a, token_b) = initialize_mint();
+    let pool_dispatcher = IPoolDispatcher { contract_address: pool };
+
+    // Mint
+    let a_amount = 30_000_000;
+    let b_amount = 50_000_000;
+
+    let router = deploy_router(factory);
+    let router_dispatcher = IRouterDispatcher { contract_address: router };
+
+    set_caller_address(OWNER());
+    let token_a_dispatcher = IERC20Dispatcher { contract_address: token_a };
+    let token_b_dispatcher = IERC20Dispatcher { contract_address: token_b };
+
+    set_contract_address(OWNER());
+    token_a_dispatcher.approve(router, BoundedInt::max());
+    token_b_dispatcher.approve(router, BoundedInt::max());
+    router_dispatcher.add_liquidity(token_a, token_b, 5_000, 5_000, 0, 0, OWNER(), 166633333);
+
+    let mut path = ArrayTrait::<ContractAddress>::new();
+    path.append(token_a);
+    path.append(token_b);
+    set_contract_address(OWNER());
+    router_dispatcher.swap_tokens_for_exact_tokens(1000, 10000, path, OWNER(), 166633333);
+}
+#[test]
+#[available_gas(200_000_000)]
+fn test_remove_liquidity() {
+    set_contract_address(OWNER());
+    let (factory, pool, token_a, token_b) = initialize_mint();
+    let pool_dispatcher = IPoolDispatcher { contract_address: pool };
+
+    // Mint
+    let a_amount = 30_000_000;
+    let b_amount = 50_000_000;
+
+    let router = deploy_router(factory);
+    let router_dispatcher = IRouterDispatcher { contract_address: router };
+
+    set_caller_address(OWNER());
+    let token_a_dispatcher = IERC20Dispatcher { contract_address: token_a };
+    let token_b_dispatcher = IERC20Dispatcher { contract_address: token_b };
+
+    set_contract_address(OWNER());
+    'router'.print();
+    router.print();
+    token_a_dispatcher.approve(router, BoundedInt::max());
+    token_b_dispatcher.approve(router, BoundedInt::max());
+    router_dispatcher.add_liquidity(token_a, token_b, 5_000, 5_000, 0, 0, OWNER(), 166633333);
+
+    let mut path = ArrayTrait::<ContractAddress>::new();
+    path.append(token_a);
+    path.append(token_b);
+    set_contract_address(OWNER());
+    router_dispatcher.swap_exact_tokens_for_tokens(2000, 0, path, OWNER(), 166633333);
+    let liquidity_held = pool_dispatcher.balance_of(OWNER());
+    pool_dispatcher.approve(router, BoundedInt::max());
+    let (amount_a, amount_b) = router_dispatcher
+        .remove_liquidity(token_a, token_b, liquidity_held, 0, 0, OWNER(), 166633333);
+    'amount_a'.print();
+    amount_a.print();
+    'amount_b'.print();
+    amount_b.print();
+}
 

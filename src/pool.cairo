@@ -58,7 +58,7 @@ mod Pool {
 
     use soraswap::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use soraswap::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
-    use soraswap::libraries::library::{ISoraswapCalleeDispatcher, ISoraswapCalleeDispatcherTrait};
+    use soraswap::libraries::library::{ICalleeContractDispatcher, ICalleeContractDispatcherTrait};
 
     const DECIMALS: u8 = 18;
     const MINIMUM_LIQUIDITY: u256 = 1000;
@@ -202,6 +202,7 @@ mod Pool {
 
         fn transfer(ref self: ContractState, recipient: ContractAddress, amount: u256) {
             let sender = get_caller_address();
+            // これが安全であるか。
             self.transfer_helper(sender, recipient, amount);
         }
 
@@ -262,7 +263,7 @@ mod Pool {
                 contract_address: self.token1.read()
             }.balance_of(contract);
 
-            // safe mathを導入する。下記のamountは追加されたトークンの量を表す。
+            // if overflow happens, then panic
             let amount0 = U256Sub::sub(balance0, reserve0);
             let amount1 = U256Sub::sub(balance1, reserve1);
             // // if protocol fee is on
@@ -309,14 +310,17 @@ mod Pool {
             let reserve0 = self.reserve0.read();
             let reserve1 = self.reserve1.read();
             let token0 = self.token0.read();
-            let token1 = self.token0.read();
+            let token1 = self.token1.read();
 
             let balance0 = IERC20Dispatcher { contract_address: token0 }.balance_of(contract);
             let balance1 = IERC20Dispatcher { contract_address: token1 }.balance_of(contract);
 
-            let liquidity = self.balances.read(contract);
-
-            let fee_on = self._mint_fee(reserve0, reserve1);
+            let liquidity = self
+                .balances
+                .read(contract); // balance of liquidity token sent to the pool contract itself
+            // let fee_on = self._mint_fee(reserve0, reserve1);
+            //todo: to review and rewrite mint_fee
+            let fee_on = false;
             let total_supply = self.total_supply.read();
 
             let amount0 = U256Div::div(U256Mul::mul(liquidity, balance0), total_supply);
@@ -325,17 +329,15 @@ mod Pool {
             assert(amount0 > 0 && amount1 > 0, 'burn amounts should positive');
             self._burn(contract, liquidity);
 
-            IERC20Dispatcher { contract_address: token0 }.transfer_from(contract, to, amount0);
-            IERC20Dispatcher { contract_address: token1 }.transfer_from(contract, to, amount1);
+            let token0_dispatcher = IERC20Dispatcher { contract_address: token0 };
+            token0_dispatcher.approve(contract, amount0);
+            token0_dispatcher.transfer_from(contract, to, amount0);
+            let token1_dispatcher = IERC20Dispatcher { contract_address: token1 };
+            token1_dispatcher.approve(contract, amount1);
+            token1_dispatcher.transfer_from(contract, to, amount1);
 
-            let updated_balance0 = IERC20Dispatcher {
-                contract_address: token0
-            }.balance_of(contract);
-
-            let updated_balance1 = IERC20Dispatcher {
-                contract_address: token1
-            }.balance_of(contract);
-
+            let updated_balance0 = token0_dispatcher.balance_of(contract);
+            let updated_balance1 = token1_dispatcher.balance_of(contract);
             self._update(updated_balance0, updated_balance1, reserve0, reserve1);
 
             if fee_on {
@@ -360,33 +362,28 @@ mod Pool {
             assert(amount1_out < reserve1, 'reserve1 is insufficient');
 
             let contract = get_contract_address();
+            let caller = get_caller_address();
             let token0 = self.token0.read();
             let token1 = self.token1.read();
 
             assert(to != token0 && to != token1, 'to should different from tokens');
-            //todo: safe transferを研究する。
+
             if amount0_out > 0 {
-                IERC20Dispatcher { contract_address: token0 }.approve(contract, amount0_out);
+                let token0_dispatcher = IERC20Dispatcher { contract_address: token0 };
+                token0_dispatcher.transfer(to, amount0_out);
             }
-            if amount0_out > 0 {
-                IERC20Dispatcher {
-                    contract_address: token0
-                }.transfer_from(contract, to, amount0_out);
-            }
-            if amount0_out > 0 {
-                IERC20Dispatcher { contract_address: token0 }.approve(contract, amount0_out);
-            }
+            IERC20Dispatcher { contract_address: token1 }.balance_of(contract).print();
             if amount1_out > 0 {
-                IERC20Dispatcher {
-                    contract_address: token1
-                }.transfer_from(contract, to, amount1_out);
+                amount1_out.print();
+                let token1_dispatcher = IERC20Dispatcher { contract_address: token1 };
+                token1_dispatcher.transfer(to, amount1_out);
             }
             // defalut case: data = 0 / if someone wants to send the tokens to another smart contract
             // and invoke some functions with the specified data, data lengsh should be 1 or more.
             if data.len() > 0 {
-                ISoraswapCalleeDispatcher {
+                ICalleeContractDispatcher {
                     contract_address: to
-                }.soraswap_call(starknet::get_caller_address(), amount0_out, amount1_out, data);
+                }.call_from_swap(get_caller_address(), amount0_out, amount1_out, data);
             }
             // このバランスの量は、スワップによるcallerに対するトークンの送信を実行したあとのトークン残高
             let balance0 = IERC20Dispatcher { contract_address: token0 }.balance_of(contract);

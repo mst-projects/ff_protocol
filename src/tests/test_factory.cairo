@@ -1,21 +1,21 @@
-use core::zeroable::Zeroable;
-use starknet::class_hash::ClassHash;
-use starknet::class_hash_const;
-use starknet::ContractAddress;
-use starknet::contract_address_const;
-use starknet::testing::set_caller_address;
-
 use array::ArrayTrait;
 use debug::PrintTrait;
 use option::OptionTrait;
 use result::ResultTrait;
 use serde::Serde;
+use starknet::class_hash::ClassHash;
+use starknet::class_hash_const;
+use starknet::ContractAddress;
+use starknet::contract_address_const;
+use starknet::testing::{set_caller_address, set_contract_address};
 use traits::{Into, TryInto};
+use zeroable::Zeroable;
 
-use soraswap::tests::utils;
 use soraswap::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
 use soraswap::factory::Factory;
 use soraswap::factory::Factory::FactoryImpl;
+use soraswap::pool::Pool;
+use soraswap::tests::utils;
 
 fn STATE() -> Factory::ContractState {
     Factory::contract_state_for_testing()
@@ -36,16 +36,34 @@ fn POOL_CLASS_HASH() -> ClassHash {
     class_hash_const::<0x020a3f9f75016417a0a86a8a13e7ce75bb8a0021db689108268db28eb5c2b818>()
 }
 
+fn TOKEN_A() -> ContractAddress {
+    contract_address_const::<11>()
+}
+
+fn TOKEN_B() -> ContractAddress {
+    contract_address_const::<12>()
+}
+
 //
 // Setup
 //
-
 fn setup() -> Factory::ContractState {
     let mut state = STATE();
     let owner = OWNER();
     let class_hash = POOL_CLASS_HASH();
     Factory::constructor(ref state, class_hash, owner);
     state
+}
+
+fn deploy_factory() -> ContractAddress {
+    set_caller_address(OWNER());
+
+    let mut calldata = ArrayTrait::new();
+    Pool::TEST_CLASS_HASH.serialize(ref output: calldata);
+    OWNER().serialize(ref output: calldata);
+
+    let contract_address = utils::deploy(Factory::TEST_CLASS_HASH, calldata);
+    contract_address
 }
 
 //
@@ -114,20 +132,34 @@ fn test_set_fee_to_setter_from_zero() {
     let mut state = setup();
     FactoryImpl::set_fee_to(ref state, NEW_OWNER());
 }
-// #[test]
-// #[available_gas(20_000_000)]
-// fn test_utils() {
-//     let factory_class_hash =
-//         class_hash_const::<0x060ecc284bb8848f5999f385b4508932b1100054d797bf10c833f5e9e8bf3b4d>();
 
-//     let pool_class_hash =
-//         class_hash_const::<0x020a3f9f75016417a0a86a8a13e7ce75bb8a0021db689108268db28eb5c2b818>();
+//
+// test upon deployment
+//
+#[test]
+#[available_gas(20_000_000)]
+fn test_create_pair() {
+    set_contract_address(OWNER());
+    let factory = deploy_factory();
+    let factory_dispatcher = IFactoryDispatcher { contract_address: factory };
+    let pool = factory_dispatcher.create_pool(TOKEN_A(), TOKEN_B());
+    'pool address'.print();
+    pool.print();
+}
 
-//     let mut calldata = ArrayTrait::<felt252>::new();
-//     pool_class_hash.serialize(ref output: calldata);
+#[test]
+#[available_gas(20_000_000)]
+fn test_get_pool_by_tokens() {
+    set_contract_address(OWNER());
+    let factory = deploy_factory();
+    let factory_dispatcher = IFactoryDispatcher { contract_address: factory };
+    let pool = factory_dispatcher.create_pool(TOKEN_A(), TOKEN_B());
+    'pool address'.print();
+    pool.print();
 
-//     let mut factory = utils::deploy(factory_class_hash, calldata);
-//     factory.print();
-// }
-
+    assert(
+        factory_dispatcher.get_pool_by_tokens(TOKEN_A(), TOKEN_B()) == pool,
+        'pool address should be equal'
+    );
+}
 
