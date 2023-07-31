@@ -3,8 +3,8 @@ use starknet::ContractAddress;
 use starknet::contract_address_const;
 use starknet::testing::set_caller_address;
 
-use field_swap::erc20::ERC20;
-use field_swap::erc20::ERC20::{ERC20Impl, InternalImpl};
+use fieldfi_v1::erc20::ERC20;
+use fieldfi_v1::erc20::ERC20::{ERC20Impl, InternalImpl};
 //
 // Constants
 //
@@ -115,7 +115,7 @@ fn test_transfer() {
 #[should_panic(expected: ('ERC20: transfer from 0', ))]
 fn test_transfer_from_zero() {
     let mut state = setup();
-    InternalImpl::transfer_helper(ref state, Zeroable::zero(), RECIPIENT(), VALUE);
+    InternalImpl::_transfer(ref state, Zeroable::zero(), RECIPIENT(), VALUE);
 }
 
 #[test]
@@ -123,7 +123,7 @@ fn test_transfer_from_zero() {
 #[should_panic(expected: ('ERC20: transfer to 0', ))]
 fn test_transfer_helper_to_zero() {
     let mut state = setup();
-    InternalImpl::transfer_helper(ref state, OWNER(), Zeroable::zero(), VALUE);
+    InternalImpl::_transfer(ref state, OWNER(), Zeroable::zero(), VALUE);
 }
 
 //

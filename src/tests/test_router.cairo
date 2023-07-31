@@ -14,19 +14,19 @@ use traits::{Into, TryInto, PartialEq};
 use zeroable::Zeroable;
 
 
-use field_swap::erc20::ERC20;
-use field_swap::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
-use field_swap::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
-use field_swap::factory::Factory;
-use field_swap::libraries::library;
-use field_swap::pool::{IPoolDispatcher, IPoolDispatcherTrait};
-use field_swap::pool::Pool;
-use field_swap::pool::Pool::PoolImpl;
-use field_swap::router::Router;
-use field_swap::router::Router::RouterImpl;
-use field_swap::router::Router::InternalImpl;
-use field_swap::router::{IRouterDispatcher, IRouterDispatcherTrait};
-use field_swap::tests::utils;
+use fieldfi_v1::erc20::ERC20;
+use fieldfi_v1::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
+use fieldfi_v1::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
+use fieldfi_v1::factory::Factory;
+use fieldfi_v1::libraries::library;
+use fieldfi_v1::pool::{IPoolDispatcher, IPoolDispatcherTrait};
+use fieldfi_v1::pool::Pool;
+use fieldfi_v1::pool::Pool::PoolImpl;
+use fieldfi_v1::router::Router;
+use fieldfi_v1::router::Router::RouterImpl;
+use fieldfi_v1::router::Router::InternalImpl;
+use fieldfi_v1::router::{IRouterDispatcher, IRouterDispatcherTrait};
+use fieldfi_v1::tests::utils;
 
 const DECIMALS: u8 = 18;
 const MINIMUM_LIQUIDITY: u256 = 1000;

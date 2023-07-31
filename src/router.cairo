@@ -47,20 +47,19 @@ trait IRouter<TContractState> {
 mod Router {
     use array::{ArrayTrait, SpanTrait};
     use clone::Clone;
-    use debug::PrintTrait;
     use integer::{U256Add, U256Sub, U256Mul, U256Div};
     use serde::Serde;
     use starknet::ContractAddress;
     use starknet::get_caller_address;
     use starknet::get_contract_address;
-    use traits::{Into};
+    use traits::Into;
     use zeroable::Zeroable;
 
-    use field_swap::libraries::library;
-    use field_swap::erc20::IERC20Dispatcher;
-    use field_swap::erc20::IERC20DispatcherTrait;
-    use field_swap::pool::{IPoolDispatcher, IPoolDispatcherTrait};
-    use field_swap::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
+    use fieldfi_v1::libraries::library;
+    use fieldfi_v1::erc20::IERC20Dispatcher;
+    use fieldfi_v1::erc20::IERC20DispatcherTrait;
+    use fieldfi_v1::pool::{IPoolDispatcher, IPoolDispatcherTrait};
+    use fieldfi_v1::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
 
     #[storage]
     struct Storage {
@@ -173,8 +172,6 @@ mod Router {
             deadline: u256,
         ) -> Span<u256> {
             let amounts = library::get_amounts_in(self.factory.read(), amount_out, path.span());
-            'amounts.len'.print();
-            amounts.len().print();
             assert(amounts[0].clone() <= amount_in_max, 'input is above max');
             let pool = IFactoryDispatcher {
                 contract_address: self.factory.read()
@@ -227,8 +224,6 @@ mod Router {
                     (amount_a_optimal, amount_b_desired)
                 }
             };
-            'amount_a in _add_liquidity'.print();
-            amount_a.print();
             (amount_a, amount_b)
         }
 
@@ -247,7 +242,7 @@ mod Router {
                     break;
                 } else {
                     let (input, output) = (path[i].clone(), path[i + 1].clone());
-                    let amount_out = amounts[i + 1];
+                    let amount_out = amounts.at(i + 1);
                     let (token0, _token1) = library::sort_tokens(input, output);
                     // @を使うことにどのような意味があるのか。
                     let (amount0_out, amount1_out) = if input == token0 {
@@ -262,7 +257,7 @@ mod Router {
                     let to_for_each_swap = if i < path_length - 2 {
                         IFactoryDispatcher {
                             contract_address: self.factory.read()
-                        }.get_pool_by_tokens(output, path[i + 2].clone())
+                        }.get_pool_by_tokens(output, path.at(i + 2).clone())
                     } else {
                         to
                     };

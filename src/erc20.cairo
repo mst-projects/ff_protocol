@@ -117,7 +117,7 @@ mod ERC20 {
 
         fn transfer(ref self: ContractState, recipient: ContractAddress, amount: u256) -> bool {
             let sender = get_caller_address();
-            self.transfer_helper(sender, recipient, amount);
+            self._transfer(sender, recipient, amount);
             true
         }
 
@@ -128,24 +128,21 @@ mod ERC20 {
             amount: u256
         ) -> bool {
             let caller = get_caller_address();
-            self.spend_allowance(sender, caller, amount);
-            self.transfer_helper(sender, recipient, amount);
+            self._spend_allowance(sender, caller, amount);
+            self._transfer(sender, recipient, amount);
             true
         }
 
         fn approve(ref self: ContractState, spender: ContractAddress, amount: u256) -> bool {
             let caller = get_caller_address();
-            self.approve_helper(caller, spender, amount);
+            self._approve(caller, spender, amount);
             true
         }
         fn increase_allowance(
             ref self: ContractState, spender: ContractAddress, added_value: u256
         ) -> bool {
             let caller = get_caller_address();
-            self
-                .approve_helper(
-                    caller, spender, self.allowances.read((caller, spender)) + added_value
-                );
+            self._approve(caller, spender, self.allowances.read((caller, spender)) + added_value);
             true
         }
 
@@ -154,7 +151,7 @@ mod ERC20 {
         ) -> bool {
             let caller = get_caller_address();
             self
-                .approve_helper(
+                ._approve(
                     caller, spender, self.allowances.read((caller, spender)) - subtracted_value
                 );
             true
@@ -163,7 +160,7 @@ mod ERC20 {
 
     #[generate_trait]
     impl InternalImpl of InternalTrait {
-        fn transfer_helper(
+        fn _transfer(
             ref self: ContractState,
             sender: ContractAddress,
             recipient: ContractAddress,
@@ -176,7 +173,7 @@ mod ERC20 {
             self.emit(Transfer { from: sender, to: recipient, value: amount });
         }
 
-        fn spend_allowance(
+        fn _spend_allowance(
             ref self: ContractState, owner: ContractAddress, spender: ContractAddress, amount: u256
         ) {
             let current_allowance = self.allowances.read((owner, spender));
@@ -184,11 +181,11 @@ mod ERC20 {
             let is_unlimited_allowance = current_allowance.low == ONES_MASK
                 && current_allowance.high == ONES_MASK;
             if !is_unlimited_allowance {
-                self.approve_helper(owner, spender, current_allowance - amount);
+                self._approve(owner, spender, current_allowance - amount);
             }
         }
 
-        fn approve_helper(
+        fn _approve(
             ref self: ContractState, owner: ContractAddress, spender: ContractAddress, amount: u256
         ) {
             assert(!owner.is_zero(), 'ERC20: approve from 0');

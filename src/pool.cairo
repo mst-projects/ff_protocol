@@ -47,7 +47,6 @@ trait IPool<TContractState> {
 #[starknet::contract]
 mod Pool {
     use array::{ArrayTCloneImpl, SpanSerde, ArrayTrait, SpanTrait};
-    use debug::PrintTrait;
     use integer::{U256Add, U256Sub, U256Mul, U256Div};
     use serde::Serde;
     use starknet::ContractAddress;
@@ -56,13 +55,13 @@ mod Pool {
     use traits::{TryInto, Into};
     use zeroable::Zeroable;
 
-    use field_swap::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
-    use field_swap::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
-    use field_swap::libraries::library::{ICalleeContractDispatcher, ICalleeContractDispatcherTrait};
+    use fieldfi_v1::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
+    use fieldfi_v1::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
+    use fieldfi_v1::libraries::library::{ICalleeContractDispatcher, ICalleeContractDispatcherTrait};
 
     const DECIMALS: u8 = 18;
     const MINIMUM_LIQUIDITY: u256 = 1000;
-    const NAME: felt252 = 'FieldSwap LP';
+    const NAME: felt252 = 'FieldFi V1 LP';
     const SYMBOL: felt252 = 'FLP';
 
     #[storage] //structは明示しない限り、外からアクセスできないという理解で良いか。
@@ -203,7 +202,7 @@ mod Pool {
         fn transfer(ref self: ContractState, recipient: ContractAddress, amount: u256) {
             let sender = get_caller_address();
             // これが安全であるか。
-            self.transfer_helper(sender, recipient, amount);
+            self._transfer(sender, recipient, amount);
         }
 
         fn transfer_from(
@@ -213,23 +212,20 @@ mod Pool {
             amount: u256
         ) {
             let caller = get_caller_address();
-            self.spend_allowance(sender, caller, amount);
-            self.transfer_helper(sender, recipient, amount);
+            self._spend_allowance(sender, caller, amount);
+            self._transfer(sender, recipient, amount);
         }
 
         fn approve(ref self: ContractState, spender: ContractAddress, amount: u256) {
             let caller = get_caller_address();
-            self.approve_helper(caller, spender, amount);
+            self._approve(caller, spender, amount);
         }
 
         fn increase_allowance(
             ref self: ContractState, spender: ContractAddress, added_value: u256
         ) {
             let caller = get_caller_address();
-            self
-                .approve_helper(
-                    caller, spender, self.allowances.read((caller, spender)) + added_value
-                );
+            self._approve(caller, spender, self.allowances.read((caller, spender)) + added_value);
         }
 
         fn decrease_allowance(
@@ -237,7 +233,7 @@ mod Pool {
         ) {
             let caller = get_caller_address();
             self
-                .approve_helper(
+                ._approve(
                     caller, spender, self.allowances.read((caller, spender)) - subtracted_value
                 );
         }
@@ -372,9 +368,7 @@ mod Pool {
                 let token0_dispatcher = IERC20Dispatcher { contract_address: token0 };
                 token0_dispatcher.transfer(to, amount0_out);
             }
-            IERC20Dispatcher { contract_address: token1 }.balance_of(contract).print();
             if amount1_out > 0 {
-                amount1_out.print();
                 let token1_dispatcher = IERC20Dispatcher { contract_address: token1 };
                 token1_dispatcher.transfer(to, amount1_out);
             }
@@ -451,7 +445,7 @@ mod Pool {
 
     #[generate_trait]
     impl InternalImpl of InternalTrait {
-        fn transfer_helper(
+        fn _transfer(
             ref self: ContractState,
             sender: ContractAddress,
             recipient: ContractAddress,
@@ -464,7 +458,7 @@ mod Pool {
             self.emit(Transfer { from: sender, to: recipient, value: amount });
         }
 
-        fn spend_allowance(
+        fn _spend_allowance(
             ref self: ContractState, owner: ContractAddress, spender: ContractAddress, amount: u256
         ) {
             let current_allowance = self.allowances.read((owner, spender));
@@ -472,11 +466,11 @@ mod Pool {
             let is_unlimited_allowance = current_allowance.low == ONES_MASK
                 && current_allowance.high == ONES_MASK;
             if !is_unlimited_allowance {
-                self.approve_helper(owner, spender, current_allowance - amount);
+                self._approve(owner, spender, current_allowance - amount);
             }
         }
 
-        fn approve_helper(
+        fn _approve(
             ref self: ContractState, owner: ContractAddress, spender: ContractAddress, amount: u256
         ) {
             assert(!spender.is_zero(), 'ERC20: approve from 0');

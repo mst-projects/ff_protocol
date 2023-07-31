@@ -1,8 +1,8 @@
 mod erc20;
 mod factory;
+mod libraries;
 mod pool;
 mod router;
-mod libraries;
 
 #[cfg(test)]
 mod tests;

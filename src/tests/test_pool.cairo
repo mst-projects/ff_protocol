@@ -1,6 +1,5 @@
 use array::{ArrayTrait, SpanTrait, SpanCopy, SpanSerde};
 use option::OptionTrait;
-use debug::PrintTrait;
 use integer::u256_sqrt;
 use integer::{U256Add, U256Sub, U256Mul, U256Div};
 use result::ResultTrait;
@@ -11,20 +10,20 @@ use starknet::testing::{set_caller_address, set_contract_address};
 use traits::{Into, TryInto, PartialEq};
 use zeroable::Zeroable;
 
-use field_swap::tests::utils;
-use field_swap::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
-use field_swap::factory::Factory;
-use field_swap::pool::{IPoolDispatcher, IPoolDispatcherTrait};
-use field_swap::pool::Pool;
-use field_swap::pool::Pool::PoolImpl;
-use field_swap::pool::Pool::InternalImpl;
-use field_swap::erc20::ERC20;
-use field_swap::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
+use fieldfi_v1::tests::utils;
+use fieldfi_v1::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
+use fieldfi_v1::factory::Factory;
+use fieldfi_v1::pool::{IPoolDispatcher, IPoolDispatcherTrait};
+use fieldfi_v1::pool::Pool;
+use fieldfi_v1::pool::Pool::PoolImpl;
+use fieldfi_v1::pool::Pool::InternalImpl;
+use fieldfi_v1::erc20::ERC20;
+use fieldfi_v1::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
 
 const DECIMALS: u8 = 18;
 const MINIMUM_LIQUIDITY: u256 = 1000;
 const INITIAL_LIQUIDITY: u256 = 1_000_000_000;
-const NAME: felt252 = 'FieldSwap LP';
+const NAME: felt252 = 'FieldFi V1 LP';
 const SYMBOL: felt252 = 'FLP';
 
 fn POOL_STATE() -> Pool::ContractState {
@@ -285,10 +284,6 @@ fn test_mint_twice() {
         U256Div::div(U256Mul::mul(b_amount_2, total_supply_2), reserve1_2)
     };
 
-    liquidity_2.print();
-
-    liquidity_should_be_2.print();
-
     assert( //todo ここでoverflowすることはないのか。-> overflowしたらmintできないという結果はそれでよし。
         liquidity_2 == liquidity_should_be_2, 'liquidity2 is incorrect'
     );
@@ -406,29 +401,11 @@ fn test_burn() {
     pool_dispatcher.approve(OWNER(), liquidity_to_burn);
     pool_dispatcher.transfer_from(OWNER(), pool, liquidity_to_burn);
     let (amount_a, amount_b) = pool_dispatcher.burn(OWNER());
-    'amount_a'.print();
-    amount_a.print();
-    'amount_b'.print();
-    amount_b.print();
-
-    'total_supply_after_burn'.print();
-    pool_dispatcher.total_supply().print();
-    assert(
-        pool_dispatcher.total_supply() == total_supply - liquidity_to_burn,
-        'Total supply is incorrect'
-    );
-    'amount_a_left'.print();
     let token_a_dispatcher = IERC20Dispatcher { contract_address: token_a };
     let token_a_balance = token_a_dispatcher.balance_of(pool);
-    token_a_balance.print();
-    'amount_b_left'.print();
     let token_b_dispatcher = IERC20Dispatcher { contract_address: token_b };
     let token_b_balance = token_b_dispatcher.balance_of(pool);
-    token_b_balance.print();
-    'amount_a / amount_b'.print();
     let rate: u256 = U256Div::div(token_a_balance, token_b_balance);
-    'rate'.print();
-    rate.print();
 }
 
 //

@@ -11,11 +11,11 @@ use starknet::testing::{set_caller_address, set_contract_address};
 use traits::{Into, TryInto};
 use zeroable::Zeroable;
 
-use field_swap::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
-use field_swap::factory::Factory;
-use field_swap::factory::Factory::FactoryImpl;
-use field_swap::pool::Pool;
-use field_swap::tests::utils;
+use fieldfi_v1::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
+use fieldfi_v1::factory::Factory;
+use fieldfi_v1::factory::Factory::FactoryImpl;
+use fieldfi_v1::pool::Pool;
+use fieldfi_v1::tests::utils;
 
 fn STATE() -> Factory::ContractState {
     Factory::contract_state_for_testing()

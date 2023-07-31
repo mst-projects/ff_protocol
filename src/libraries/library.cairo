@@ -6,8 +6,8 @@ use starknet::ContractAddress;
 use starknet::{TryInto, Into};
 use zeroable::Zeroable;
 
-use field_swap::pool::{IPoolDispatcher, IPoolDispatcherTrait};
-use field_swap::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
+use fieldfi_v1::pool::{IPoolDispatcher, IPoolDispatcherTrait};
+use fieldfi_v1::factory::{IFactoryDispatcher, IFactoryDispatcherTrait};
 
 #[starknet::interface]
 trait ICalleeContract<TContractState> {
