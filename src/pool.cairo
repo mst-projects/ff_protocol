@@ -1,4 +1,3 @@
-use core::math::Oneable;
 use starknet::ContractAddress;
 
 #[starknet::interface]
@@ -46,13 +45,12 @@ trait IPool<TContractState> {
 
 #[starknet::contract]
 mod Pool {
-    use array::{ArrayTCloneImpl, SpanSerde, ArrayTrait, SpanTrait};
+    use array::{ArrayTrait, SpanTrait};
     use integer::{U256Add, U256Sub, U256Mul, U256Div};
     use serde::Serde;
     use starknet::ContractAddress;
     use starknet::{get_contract_address, get_caller_address};
-    use starknet::contract_address_const;
-    use traits::{TryInto, Into};
+    use traits::Into;
     use zeroable::Zeroable;
 
     use fieldfi_v1::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
@@ -64,9 +62,8 @@ mod Pool {
     const NAME: felt252 = 'FieldFi V1 LP';
     const SYMBOL: felt252 = 'FLP';
 
-    #[storage] //structは明示しない限り、外からアクセスできないという理解で良いか。
+    #[storage]
     struct Storage {
-        minimum_liquidity: u256,
         name: felt252,
         symbol: felt252,
         decimals: u8,
@@ -74,11 +71,13 @@ mod Pool {
         balances: LegacyMap::<ContractAddress, u256>,
         allowances: LegacyMap::<(ContractAddress, ContractAddress), u256>,
         factory: ContractAddress,
+        minimum_liquidity: u256,
         token0: ContractAddress,
         token1: ContractAddress,
         reserve0: u256,
         reserve1: u256,
         k_last: u256,
+        lock: u8, // for preveting reentrancy
     }
 
     #[event]
@@ -148,6 +147,7 @@ mod Pool {
         self.symbol.write(SYMBOL);
         self.decimals.write(DECIMALS);
         self.minimum_liquidity.write(MINIMUM_LIQUIDITY);
+        self.lock.write(1);
     }
 
     #[external(v0)]
@@ -201,7 +201,6 @@ mod Pool {
 
         fn transfer(ref self: ContractState, recipient: ContractAddress, amount: u256) {
             let sender = get_caller_address();
-            // これが安全であるか。
             self._transfer(sender, recipient, amount);
         }
 
@@ -237,17 +236,16 @@ mod Pool {
                     caller, spender, self.allowances.read((caller, spender)) - subtracted_value
                 );
         }
-        // todo: if token0 == token1, then what happens?
+
         fn initialize(ref self: ContractState, token0: ContractAddress, token1: ContractAddress) {
             assert(get_caller_address() == self.factory.read(), 'Should be called from factory');
-            assert(token0 != token1, 'identical addresses');
             self.token0.write(token0);
             self.token1.write(token1);
         }
 
-        // この関数は、現実にdepositされている残高が増えた後に呼ぶことが想定される（そうしないと、callerは何もmintすることができない。
-        // 現実にdepositされている残高はbalanceと観念され、スマコンに記録されている残高は、reserveと観念される。 add liquidity
         fn mint(ref self: ContractState, to: ContractAddress) -> u256 {
+            assert(self.lock.read() == 1, 'pool is locked');
+            self.lock.write(0);
             assert(to.is_non_zero(), 'Should not mint to zero');
             let reserve0 = self.reserve0.read();
             let reserve1 = self.reserve1.read();
@@ -273,7 +271,7 @@ mod Pool {
 
             if total_supply == 0 {
                 liquidity = u256_sqrt(U256Mul::mul(amount0, amount1)).into() - minimum_liquidity;
-                assert(liquidity > 0, 'liquidity less than minmum');
+                assert(liquidity > 0, 'Liquidity less than minmum');
                 // mint minimum liquidity to zero address
                 self
                     ._mint(
@@ -291,17 +289,21 @@ mod Pool {
                 };
             }
             assert(liquidity > 0, 'liquidity should be posivite');
-            self._mint(to, liquidity);
             self._update(balance0, balance1, reserve0, reserve1);
+            self._mint(to, liquidity);
+            let (updated_reserve0, updated_reserve1) = (self.reserve0.read(), self.reserve1.read());
             if (fee_on) {
-                self.k_last.write(U256Mul::mul(reserve0, reserve1));
+                self.k_last.write(U256Mul::mul(updated_reserve0, updated_reserve1));
             }
             self.emit(Event::Mint(Mint { sender: get_caller_address(), amount0, amount1 }));
+            self.lock.write(1);
             liquidity
         }
 
         // This function is expected to be called atomically after the caller sends liquidity tokens to the pool contract 
         fn burn(ref self: ContractState, to: ContractAddress) -> (u256, u256) {
+            assert(self.lock.read() == 1, 'pool is locked');
+            self.lock.write(0);
             let contract = get_contract_address();
             let reserve0 = self.reserve0.read();
             let reserve1 = self.reserve1.read();
@@ -340,10 +342,10 @@ mod Pool {
                 self.k_last.write(U256Mul::mul(reserve0, reserve1));
             }
             self.emit(Event::Burn(Burn { sender: get_caller_address(), amount0, amount1, to }));
+            self.lock.write(1);
             (amount0, amount1)
         }
 
-        // lockのmodifierを追加する必要がある。
         fn swap(
             ref self: ContractState,
             amount0_out: u256,
@@ -351,6 +353,8 @@ mod Pool {
             data: Span<felt252>,
             to: ContractAddress
         ) {
+            assert(self.lock.read() == 1, 'pool is locked');
+            self.lock.write(0);
             assert(amount0_out > 0 || amount1_out > 0, 'one amount_out should positive');
             let reserve0 = self.reserve0.read();
             let reserve1 = self.reserve1.read();
@@ -417,9 +421,12 @@ mod Pool {
                         }
                     )
                 );
+            self.lock.write(1);
         }
 
         fn skim(ref self: ContractState, to: ContractAddress) {
+            assert(self.lock.read() == 1, 'pool is locked');
+            self.lock.write(0);
             let contract = get_contract_address();
             let token0 = self.token0.read();
             let token1 = self.token1.read();
@@ -431,15 +438,19 @@ mod Pool {
             IERC20Dispatcher {
                 contract_address: token1
             }.transfer_from(contract, to, U256Sub::sub(balance1, self.reserve1.read()));
+            self.lock.write(1);
         }
 
         fn sync(ref self: ContractState) {
+            assert(self.lock.read() == 1, 'pool is locked');
+            self.lock.write(0);
             let contract = get_contract_address();
             let token0 = self.token0.read();
             let token1 = self.token1.read();
             let balance0 = IERC20Dispatcher { contract_address: token0 }.balance_of(contract);
             let balance1 = IERC20Dispatcher { contract_address: token1 }.balance_of(contract);
             self._update(balance0, balance1, self.reserve0.read(), self.reserve1.read());
+            self.lock.write(1);
         }
     }
 
@@ -478,7 +489,6 @@ mod Pool {
             self.emit(Event::Approval(Approval { owner, spender, value: amount }));
         }
 
-        // liquidy tokenをtoに対して発行
         fn _mint(ref self: ContractState, to: ContractAddress, value: u256) {
             self.total_supply.write(U256Add::add(self.total_supply.read(), value));
             self.balances.write(to, U256Add::add(self.balances.read(to), value));
@@ -517,7 +527,7 @@ mod Pool {
         }
 
         // update reserves according to balances
-        // todo review whether reverves should be u128 or smaller -> just for gas saving in Ethereum
+        // todo: review whether reverves should be u128 or smaller -> just for gas saving in Ethereum
         fn _update(
             ref self: ContractState, balance0: u256, balance1: u256, reserve0: u256, reserve1: u256
         ) {

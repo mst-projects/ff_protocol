@@ -2,7 +2,7 @@ use starknet::{ContractAddress};
 
 #[starknet::interface]
 trait IFactory<TContractState> {
-    //todo:  only for test. It should be deleted before deployment
+    //todo: The function below is only for testing purposes and should be removed in production.
     fn _set_pool_by_tokens(
         ref self: TContractState,
         token_a: ContractAddress,
@@ -12,7 +12,6 @@ trait IFactory<TContractState> {
     fn create_pool(
         ref self: TContractState, token_a: ContractAddress, token_b: ContractAddress
     ) -> ContractAddress;
-    // give inputs unsorted to the getter function
     fn set_fee_to(ref self: TContractState, fee_to: ContractAddress);
     fn set_fee_to_setter(ref self: TContractState, fee_to_setter: ContractAddress);
     fn get_pool_by_tokens(
@@ -28,10 +27,10 @@ mod Factory {
     use hash::LegacyHash;
     use serde::Serde;
     use starknet::class_hash::ClassHash;
-    use starknet::{ContractAddress, ContractAddressIntoFelt252};
+    use starknet::ContractAddress;
     use starknet::get_caller_address;
     use starknet::syscalls::deploy_syscall;
-    use traits::{Into, TryInto};
+    use traits::Into;
     use zeroable::Zeroable;
 
     use fieldfi_v1::libraries::library;
@@ -40,9 +39,8 @@ mod Factory {
     #[storage]
     struct Storage {
         pool_class_hash: ClassHash,
-        fee_to: ContractAddress, // recipient of fees
-        fee_to_setter: ContractAddress, // a peson who can change the fee_to address
-        //variablesの順番が逆になっても、特定できるか。
+        fee_to: ContractAddress,
+        fee_to_setter: ContractAddress,
         pool_by_tokens: LegacyMap::<(ContractAddress, ContractAddress), ContractAddress>,
     }
 
@@ -52,7 +50,6 @@ mod Factory {
         PairCreated: PairCreated
     }
 
-    // keyはStorageにつけるのか。Eventにつけるのか。
     #[derive(Drop, starknet::Event)]
     struct PairCreated {
         #[key]
@@ -86,7 +83,6 @@ mod Factory {
             ref self: ContractState, token_a: ContractAddress, token_b: ContractAddress
         ) -> ContractAddress {
             assert(token_a != token_b, 'tokens are identical');
-            // ContractAddressを比較する方法（もっと良い方法）
             let (token0, token1) = library::sort_tokens(token_a, token_b);
             assert(token0.is_non_zero(), 'token is zero');
 
@@ -94,12 +90,11 @@ mod Factory {
             let mut pool: ContractAddress = self.pool_by_tokens.read((token0, token1));
             assert(pool.is_zero(), 'pool already exists');
 
+            // arguments for pool deoloyment
             let contract_address_salt = LegacyHash::hash(token0.into(), token1);
-
-            // constructorにargumentなしの場合を表現できているか。
             let calldata = ArrayTrait::<felt252>::new().span();
-
             let deploy_from_zero = false;
+
             // deoloy pool contract
             let (created_pool, returned_data) = deploy_syscall(
                 class_hash, contract_address_salt, calldata, deploy_from_zero: false, 
@@ -107,25 +102,17 @@ mod Factory {
                 .unwrap_syscall();
             IPoolDispatcher { contract_address: created_pool }.initialize(token0, token1);
             self.pool_by_tokens.write((token0, token1), created_pool);
-            self
-                .pool_by_tokens
-                .write((token1, token0), created_pool); // populate mapping in the reverse direction
-            self
-                .emit(
-                    Event::PairCreated(
-                        PairCreated { token0: token0, token1: token1, pool: created_pool }
-                    )
-                );
+            self.emit(Event::PairCreated(PairCreated { token0, token1, pool: created_pool }));
             created_pool
         }
 
         fn set_fee_to(ref self: ContractState, fee_to: ContractAddress) {
-            assert(get_caller_address() == self.fee_to_setter.read(), 'FORBIDDEN');
+            assert(get_caller_address() == self.fee_to_setter.read(), 'Not authorized');
             self.fee_to.write(fee_to);
         }
 
         fn set_fee_to_setter(ref self: ContractState, fee_to_setter: ContractAddress) {
-            assert(get_caller_address() == self.fee_to_setter.read(), 'FORBIDDEN');
+            assert(get_caller_address() == self.fee_to_setter.read(), 'Not authorized');
             self.fee_to_setter.write(fee_to_setter);
         }
 
@@ -134,7 +121,7 @@ mod Factory {
         ) -> ContractAddress {
             assert(token_a != token_b, 'tokens are identical');
             let (token0, token1) = library::sort_tokens(token_a, token_b);
-            self.pool_by_tokens.read((token_a, token_b))
+            self.pool_by_tokens.read((token0, token1))
         }
 
         fn get_fee_to(self: @ContractState) -> ContractAddress {
@@ -146,4 +133,3 @@ mod Factory {
         }
     }
 }
-

@@ -110,7 +110,6 @@ mod Router {
             let token_b_dispatcher = IERC20Dispatcher { contract_address: token_b };
             token_b_dispatcher.transfer_from(caller, pool, amount_b);
 
-            // 預け証のトークンを発行する。
             let liquidity = IPoolDispatcher { contract_address: pool,  }.mint(to);
             (amount_a, amount_b, liquidity)
         }
