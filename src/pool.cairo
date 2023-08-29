@@ -30,7 +30,7 @@ trait IPool<TContractState> {
 
     // Pool-related functions
     fn initialize(ref self: TContractState, token0: ContractAddress, token1: ContractAddress);
-    fn skim(ref self: TContractState, to: ContractAddress);
+
     fn mint(ref self: TContractState, to: ContractAddress) -> u256;
     fn burn(ref self: TContractState, to: ContractAddress) -> (u256, u256);
     fn swap(
@@ -40,7 +40,6 @@ trait IPool<TContractState> {
         data: Span<felt252>,
         to: ContractAddress
     );
-    fn sync(ref self: TContractState);
 }
 
 #[starknet::contract]
@@ -252,17 +251,16 @@ mod Pool {
             let contract = get_contract_address();
             let balance0 = IERC20Dispatcher {
                 contract_address: self.token0.read()
-            }.balance_of(contract);
+            }.balanceOf(contract);
             let balance1 = IERC20Dispatcher {
                 contract_address: self.token1.read()
-            }.balance_of(contract);
+            }.balanceOf(contract);
 
             // if overflow happens, then panic
             let amount0 = U256Sub::sub(balance0, reserve0);
             let amount1 = U256Sub::sub(balance1, reserve1);
             // // if protocol fee is on
-            // let fee_on = self._mint_fee(reserve0, reserve1);
-            let fee_on = false;
+            let fee_on = self._mint_fee(reserve0, reserve1);
             // // total supplyは、Liquidity Tokenの発行前の数量を示す。
             let total_supply = self.total_supply.read();
             let minimum_liquidity: u256 = self.minimum_liquidity.read();
@@ -273,11 +271,7 @@ mod Pool {
                 liquidity = u256_sqrt(U256Mul::mul(amount0, amount1)).into() - minimum_liquidity;
                 assert(liquidity > 0, 'Liquidity less than minmum');
                 // mint minimum liquidity to zero address
-                self
-                    ._mint(
-                        Zeroable::zero(), minimum_liquidity
-                    ); // liquidity tokenが0の場合、minumum liquidityとして強制的に幾らかが割り当てられる。minimum liquidityは永久にロックされる。
-            //poolを作った時に、これは発行されるはず。これは、poolを作った人が支払う負担金のようなもので、poolを作った人も取り出すことができないように、liquidity tokenは0アドレスに対して発行される。
+                self._mint(Zeroable::zero(), minimum_liquidity);
             } else {
                 let liquidity0 = U256Div::div(U256Mul::mul(amount0, total_supply), reserve0);
                 let liquidity1 = U256Div::div(U256Mul::mul(amount1, total_supply), reserve1);
@@ -300,7 +294,6 @@ mod Pool {
             liquidity
         }
 
-        // This function is expected to be called atomically after the caller sends liquidity tokens to the pool contract 
         fn burn(ref self: ContractState, to: ContractAddress) -> (u256, u256) {
             assert(self.lock.read() == 1, 'pool is locked');
             self.lock.write(0);
@@ -310,15 +303,13 @@ mod Pool {
             let token0 = self.token0.read();
             let token1 = self.token1.read();
 
-            let balance0 = IERC20Dispatcher { contract_address: token0 }.balance_of(contract);
-            let balance1 = IERC20Dispatcher { contract_address: token1 }.balance_of(contract);
+            let balance0 = IERC20Dispatcher { contract_address: token0 }.balanceOf(contract);
+            let balance1 = IERC20Dispatcher { contract_address: token1 }.balanceOf(contract);
 
             let liquidity = self
                 .balances
                 .read(contract); // balance of liquidity token sent to the pool contract itself
-            // let fee_on = self._mint_fee(reserve0, reserve1);
-            //todo: to review and rewrite mint_fee
-            let fee_on = false;
+            let fee_on = self._mint_fee(reserve0, reserve1);
             let total_supply = self.total_supply.read();
 
             let amount0 = U256Div::div(U256Mul::mul(liquidity, balance0), total_supply);
@@ -329,13 +320,13 @@ mod Pool {
 
             let token0_dispatcher = IERC20Dispatcher { contract_address: token0 };
             token0_dispatcher.approve(contract, amount0);
-            token0_dispatcher.transfer_from(contract, to, amount0);
+            token0_dispatcher.transferFrom(contract, to, amount0);
             let token1_dispatcher = IERC20Dispatcher { contract_address: token1 };
             token1_dispatcher.approve(contract, amount1);
-            token1_dispatcher.transfer_from(contract, to, amount1);
+            token1_dispatcher.transferFrom(contract, to, amount1);
 
-            let updated_balance0 = token0_dispatcher.balance_of(contract);
-            let updated_balance1 = token1_dispatcher.balance_of(contract);
+            let updated_balance0 = token0_dispatcher.balanceOf(contract);
+            let updated_balance1 = token1_dispatcher.balanceOf(contract);
             self._update(updated_balance0, updated_balance1, reserve0, reserve1);
 
             if fee_on {
@@ -383,9 +374,9 @@ mod Pool {
                     contract_address: to
                 }.call_from_swap(get_caller_address(), amount0_out, amount1_out, data);
             }
-            // このバランスの量は、スワップによるcallerに対するトークンの送信を実行したあとのトークン残高
-            let balance0 = IERC20Dispatcher { contract_address: token0 }.balance_of(contract);
-            let balance1 = IERC20Dispatcher { contract_address: token1 }.balance_of(contract);
+            // These balances are balances after the transfer to the caller upon swapping is done
+            let balance0 = IERC20Dispatcher { contract_address: token0 }.balanceOf(contract);
+            let balance1 = IERC20Dispatcher { contract_address: token1 }.balanceOf(contract);
             let amount0_in = if balance0 > U256Sub::sub(reserve0, amount0_out) {
                 U256Sub::sub(balance0, (U256Sub::sub(reserve0, amount0_out)))
             } else {
@@ -421,35 +412,6 @@ mod Pool {
                         }
                     )
                 );
-            self.lock.write(1);
-        }
-
-        fn skim(ref self: ContractState, to: ContractAddress) {
-            assert(self.lock.read() == 1, 'pool is locked');
-            self.lock.write(0);
-            let contract = get_contract_address();
-            let token0 = self.token0.read();
-            let token1 = self.token1.read();
-            let balance0 = IERC20Dispatcher { contract_address: token0 }.balance_of(contract);
-            let balance1 = IERC20Dispatcher { contract_address: token1 }.balance_of(contract);
-            IERC20Dispatcher {
-                contract_address: token0
-            }.transfer_from(contract, to, U256Sub::sub(balance0, self.reserve0.read()));
-            IERC20Dispatcher {
-                contract_address: token1
-            }.transfer_from(contract, to, U256Sub::sub(balance1, self.reserve1.read()));
-            self.lock.write(1);
-        }
-
-        fn sync(ref self: ContractState) {
-            assert(self.lock.read() == 1, 'pool is locked');
-            self.lock.write(0);
-            let contract = get_contract_address();
-            let token0 = self.token0.read();
-            let token1 = self.token1.read();
-            let balance0 = IERC20Dispatcher { contract_address: token0 }.balance_of(contract);
-            let balance1 = IERC20Dispatcher { contract_address: token1 }.balance_of(contract);
-            self._update(balance0, balance1, self.reserve0.read(), self.reserve1.read());
             self.lock.write(1);
         }
     }
@@ -494,11 +456,10 @@ mod Pool {
             self.balances.write(to, U256Add::add(self.balances.read(to), value));
         }
 
-        // todo: 難易度が高いのでもっとよく考える。
+        // if fee is on, mint liquidity equivalent to 1/6th of the growth in sqrt(k)
         fn _mint_fee(ref self: ContractState, reserve0: u256, reserve1: u256) -> bool {
             let fee_to = IFactoryDispatcher { contract_address: self.factory.read() }.get_fee_to();
             let fee_on = fee_to.is_non_zero();
-
             let k_last = self.k_last.read();
             if fee_on {
                 if k_last.is_non_zero() {
@@ -506,9 +467,10 @@ mod Pool {
                     let root_k_last = u256_sqrt(k_last);
                     if (root_k > root_k_last) {
                         let numerator = U256Mul::mul(
-                            self.total_supply.read(), (root_k.into() - root_k_last.into())
+                            self.total_supply.read(),
+                            U256Sub::sub(root_k.into(), root_k_last.into())
                         );
-                        let denominator = U256Mul::mul(root_k.into(), 5) + root_k_last.into();
+                        let denominator = (root_k * 5).into() + root_k_last.into();
                         let liquidity = U256Div::div(numerator, denominator);
                         if (liquidity > 0) {
                             self._mint(fee_to, liquidity);
@@ -527,7 +489,6 @@ mod Pool {
         }
 
         // update reserves according to balances
-        // todo: review whether reverves should be u128 or smaller -> just for gas saving in Ethereum
         fn _update(
             ref self: ContractState, balance0: u256, balance1: u256, reserve0: u256, reserve1: u256
         ) {

@@ -1,8 +1,9 @@
 use starknet::{ContractAddress};
+use starknet::class_hash::ClassHash;
 
 #[starknet::interface]
 trait IFactory<TContractState> {
-    //todo: The function below is only for testing purposes and should be removed in production.
+    //todo: only for test purpose as the function of create_pool does not work smoonthly when tested.
     fn _set_pool_by_tokens(
         ref self: TContractState,
         token_a: ContractAddress,
@@ -14,6 +15,7 @@ trait IFactory<TContractState> {
     ) -> ContractAddress;
     fn set_fee_to(ref self: TContractState, fee_to: ContractAddress);
     fn set_fee_to_setter(ref self: TContractState, fee_to_setter: ContractAddress);
+    fn get_pool_class_hash(self: @TContractState) -> ClassHash;
     fn get_pool_by_tokens(
         self: @TContractState, token_a: ContractAddress, token_b: ContractAddress
     ) -> ContractAddress;
@@ -54,6 +56,7 @@ mod Factory {
     struct PairCreated {
         #[key]
         token0: ContractAddress,
+        #[key]
         token1: ContractAddress,
         pool: ContractAddress,
     }
@@ -69,6 +72,7 @@ mod Factory {
 
     #[external(v0)]
     impl FactoryImpl of super::IFactory<ContractState> {
+        //todo: only for test purpose as the function of create_pool does not work smoonthly when tested.
         fn _set_pool_by_tokens(
             ref self: ContractState,
             token_a: ContractAddress,
@@ -79,6 +83,7 @@ mod Factory {
             self.pool_by_tokens.write((token_a, token_b), pool);
         }
 
+        //todo: should only allow authorized caller to invoke this function?
         fn create_pool(
             ref self: ContractState, token_a: ContractAddress, token_b: ContractAddress
         ) -> ContractAddress {
@@ -102,6 +107,7 @@ mod Factory {
                 .unwrap_syscall();
             IPoolDispatcher { contract_address: created_pool }.initialize(token0, token1);
             self.pool_by_tokens.write((token0, token1), created_pool);
+            self.pool_by_tokens.write((token1, token0), created_pool);
             self.emit(Event::PairCreated(PairCreated { token0, token1, pool: created_pool }));
             created_pool
         }
@@ -114,6 +120,9 @@ mod Factory {
         fn set_fee_to_setter(ref self: ContractState, fee_to_setter: ContractAddress) {
             assert(get_caller_address() == self.fee_to_setter.read(), 'Not authorized');
             self.fee_to_setter.write(fee_to_setter);
+        }
+        fn get_pool_class_hash(self: @ContractState) -> ClassHash {
+            self.pool_class_hash.read()
         }
 
         fn get_pool_by_tokens(

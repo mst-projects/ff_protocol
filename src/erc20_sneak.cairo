@@ -5,20 +5,20 @@ trait IERC20<TContractState> {
     fn name(self: @TContractState) -> felt252;
     fn symbol(self: @TContractState) -> felt252;
     fn decimals(self: @TContractState) -> u8;
-    fn totalSupply(self: @TContractState) -> u256;
-    fn balanceOf(self: @TContractState, account: ContractAddress) -> u256;
+    fn total_supply(self: @TContractState) -> u256;
+    fn balance_of(self: @TContractState, account: ContractAddress) -> u256;
     fn allowance(self: @TContractState, owner: ContractAddress, spender: ContractAddress) -> u256;
 
     // returns true if the call succeeded: for transfer, transfer_from and approve
     fn transfer(ref self: TContractState, recipient: ContractAddress, amount: u256) -> bool;
-    fn transferFrom(
+    fn transfer_from(
         ref self: TContractState, sender: ContractAddress, recipient: ContractAddress, amount: u256
     ) -> bool;
     fn approve(ref self: TContractState, spender: ContractAddress, amount: u256) -> bool;
-    fn increaseAllowance(
+    fn increase_allowance(
         ref self: TContractState, spender: ContractAddress, added_value: u256
     ) -> bool;
-    fn decreaseAllowance(
+    fn decrease_allowance(
         ref self: TContractState, spender: ContractAddress, subtracted_value: u256
     ) -> bool;
 }
@@ -98,11 +98,11 @@ mod ERC20 {
             self.decimals.read()
         }
 
-        fn totalSupply(self: @ContractState) -> u256 {
+        fn total_supply(self: @ContractState) -> u256 {
             self.total_supply.read()
         }
 
-        fn balanceOf(self: @ContractState, account: ContractAddress) -> u256 {
+        fn balance_of(self: @ContractState, account: ContractAddress) -> u256 {
             self.balances.read(account)
         }
 
@@ -118,7 +118,7 @@ mod ERC20 {
             true
         }
 
-        fn transferFrom(
+        fn transfer_from(
             ref self: ContractState,
             sender: ContractAddress,
             recipient: ContractAddress,
@@ -135,7 +135,7 @@ mod ERC20 {
             self._approve(caller, spender, amount);
             true
         }
-        fn increaseAllowance(
+        fn increase_allowance(
             ref self: ContractState, spender: ContractAddress, added_value: u256
         ) -> bool {
             let caller = get_caller_address();
@@ -143,7 +143,7 @@ mod ERC20 {
             true
         }
 
-        fn decreaseAllowance(
+        fn decrease_allowance(
             ref self: ContractState, spender: ContractAddress, subtracted_value: u256
         ) -> bool {
             let caller = get_caller_address();

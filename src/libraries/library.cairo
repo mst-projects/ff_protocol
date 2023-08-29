@@ -1,6 +1,5 @@
 use array::{ArrayTrait, SpanTrait};
 use clone::Clone;
-use debug::PrintTrait;
 use integer::{U256Mul, U256Div};
 use starknet::ContractAddress;
 use starknet::{TryInto, Into};
@@ -141,8 +140,6 @@ fn get_amounts_in(
             break;
         } else {
             let element = reverse_amounts.at(j - 1);
-            'j'.print();
-            j.print();
             amounts.append(*element);
             j = j - 1;
         };

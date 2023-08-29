@@ -100,8 +100,8 @@ fn deploy_factory() -> ContractAddress {
     contract_address
 }
 
-fn deploy_pool() -> ContractAddress {
-    set_caller_address(FACTORY());
+fn deploy_pool(factory: ContractAddress) -> ContractAddress {
+    set_caller_address(factory);
     let mut calldata = ArrayTrait::new();
 
     let contract_address = utils::deploy(Pool::TEST_CLASS_HASH, calldata);
@@ -203,8 +203,8 @@ fn initialize_mint() -> (ContractAddress, ContractAddress, ContractAddress, Cont
     let token_b = deploy_erc20_token('token_b');
 
     // deploy pool contract, then initialize
-    set_contract_address(FACTORY());
-    let pool = deploy_pool();
+    set_contract_address(factory);
+    let pool = deploy_pool(factory);
     let pool_dispatcher = IPoolDispatcher { contract_address: pool };
     pool_dispatcher.initialize(token_a, token_b);
     (factory, pool, token_a, token_b)
@@ -231,8 +231,8 @@ fn process_mint(
     set_contract_address(OWNER());
     let liquidity = pool_dispatcher.mint(OWNER());
     let total_supply = pool_dispatcher.total_supply();
-    let balance0 = token_a_dispatcher.balance_of(pool);
-    let balance1 = token_b_dispatcher.balance_of(pool);
+    let balance0 = token_a_dispatcher.balanceOf(pool);
+    let balance1 = token_b_dispatcher.balanceOf(pool);
     let (reserve0, reserve1) = pool_dispatcher.get_reserves();
 
     (liquidity, total_supply, balance0, balance1, reserve0, reserve1)
@@ -402,9 +402,9 @@ fn test_burn() {
     pool_dispatcher.transfer_from(OWNER(), pool, liquidity_to_burn);
     let (amount_a, amount_b) = pool_dispatcher.burn(OWNER());
     let token_a_dispatcher = IERC20Dispatcher { contract_address: token_a };
-    let token_a_balance = token_a_dispatcher.balance_of(pool);
+    let token_a_balance = token_a_dispatcher.balanceOf(pool);
     let token_b_dispatcher = IERC20Dispatcher { contract_address: token_b };
-    let token_b_balance = token_b_dispatcher.balance_of(pool);
+    let token_b_balance = token_b_dispatcher.balanceOf(pool);
     let rate: u256 = U256Div::div(token_a_balance, token_b_balance);
 }
 

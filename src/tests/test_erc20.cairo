@@ -51,8 +51,8 @@ fn test_constructor() {
     assert(ERC20Impl::name(@state) == NAME, 'Name should be NAME');
     assert(ERC20Impl::symbol(@state) == SYMBOL, 'Symbol should be SYMBOL');
     assert(ERC20Impl::decimals(@state) == DECIMALS, 'Decimals should be 18');
-    assert(ERC20Impl::total_supply(@state) == INITIAL_SUPPLY, 'Supply should eq 0');
-    assert(ERC20Impl::balance_of(@state, OWNER()) == INITIAL_SUPPLY, 'Balance should eq 0');
+    assert(ERC20Impl::totalSupply(@state) == INITIAL_SUPPLY, 'Supply should eq 0');
+    assert(ERC20Impl::balanceOf(@state, OWNER()) == INITIAL_SUPPLY, 'Balance should eq 0');
 }
 
 //
@@ -105,9 +105,9 @@ fn test_transfer() {
     set_caller_address(OWNER());
     assert(ERC20Impl::transfer(ref state, RECIPIENT(), VALUE), 'Should return true');
     assert(
-        ERC20Impl::balance_of(@state, OWNER()) == INITIAL_SUPPLY - VALUE, 'Should eq supply - value'
+        ERC20Impl::balanceOf(@state, OWNER()) == INITIAL_SUPPLY - VALUE, 'Should eq supply - value'
     );
-    assert(ERC20Impl::balance_of(@state, RECIPIENT()) == VALUE, 'Should eq value');
+    assert(ERC20Impl::balanceOf(@state, RECIPIENT()) == VALUE, 'Should eq value');
 }
 
 #[test]
@@ -137,13 +137,13 @@ fn test_transfer_from() {
     ERC20Impl::approve(ref state, SPENDER(), VALUE);
 
     set_caller_address(SPENDER());
-    assert(ERC20Impl::transfer_from(ref state, OWNER(), RECIPIENT(), VALUE), 'Should return true');
+    assert(ERC20Impl::transferFrom(ref state, OWNER(), RECIPIENT(), VALUE), 'Should return true');
     assert(
-        ERC20Impl::balance_of(@state, OWNER()) == INITIAL_SUPPLY - VALUE, 'Should eq supply - value'
+        ERC20Impl::balanceOf(@state, OWNER()) == INITIAL_SUPPLY - VALUE, 'Should eq supply - value'
     );
-    assert(ERC20Impl::balance_of(@state, RECIPIENT()) == VALUE, 'Should eq value');
+    assert(ERC20Impl::balanceOf(@state, RECIPIENT()) == VALUE, 'Should eq value');
     assert(ERC20Impl::allowance(@state, OWNER(), SPENDER()) == 0, 'Should eq 0');
-    assert(ERC20Impl::total_supply(@state) == INITIAL_SUPPLY, 'Should eq INITIAL_SUPPLY');
+    assert(ERC20Impl::totalSupply(@state) == INITIAL_SUPPLY, 'Should eq INITIAL_SUPPLY');
 }
 
 #[test]
@@ -154,7 +154,7 @@ fn test_transfer_from_doesnt_consume_infinite_allowance() {
     ERC20Impl::approve(ref state, SPENDER(), BoundedInt::max());
 
     set_caller_address(SPENDER());
-    ERC20Impl::transfer_from(ref state, OWNER(), SPENDER(), VALUE);
+    ERC20Impl::transferFrom(ref state, OWNER(), SPENDER(), VALUE);
     assert(
         ERC20Impl::allowance(@state, OWNER(), SPENDER()) == BoundedInt::max(),
         'Allowance should not change'
@@ -170,7 +170,7 @@ fn test_transfer_from_greater_than_allowance() {
     ERC20Impl::approve(ref state, SPENDER(), VALUE);
 
     set_caller_address(SPENDER());
-    ERC20Impl::transfer_from(ref state, OWNER(), RECIPIENT(), VALUE + 1);
+    ERC20Impl::transferFrom(ref state, OWNER(), RECIPIENT(), VALUE + 1);
 }
 
 #[test]
@@ -179,7 +179,7 @@ fn test_increase_allowance() {
     let mut state = setup();
     set_caller_address(OWNER());
     ERC20Impl::approve(ref state, SPENDER(), VALUE);
-    ERC20Impl::increase_allowance(ref state, SPENDER(), VALUE);
+    ERC20Impl::increaseAllowance(ref state, SPENDER(), VALUE);
     assert(ERC20Impl::allowance(@state, OWNER(), SPENDER()) == VALUE * 2, 'Should eq VALUE * 2');
 }
 
@@ -189,7 +189,7 @@ fn test_increase_allowance() {
 fn test_increase_allowance_to_zero_address() {
     let mut state = setup();
     set_caller_address(OWNER());
-    ERC20Impl::increase_allowance(ref state, Zeroable::zero(), VALUE);
+    ERC20Impl::increaseAllowance(ref state, Zeroable::zero(), VALUE);
 }
 
 #[test]
@@ -197,7 +197,7 @@ fn test_increase_allowance_to_zero_address() {
 #[should_panic(expected: ('ERC20: approve from 0', ))]
 fn test_increase_allowance_from_zero_address() {
     let mut state = setup();
-    ERC20Impl::increase_allowance(ref state, SPENDER(), VALUE);
+    ERC20Impl::increaseAllowance(ref state, SPENDER(), VALUE);
 }
 
 #[test]
@@ -207,7 +207,7 @@ fn test_decrease_allowance() {
     set_caller_address(OWNER());
     ERC20Impl::approve(ref state, SPENDER(), VALUE);
 
-    assert(ERC20Impl::decrease_allowance(ref state, SPENDER(), VALUE), 'Should return true');
+    assert(ERC20Impl::decreaseAllowance(ref state, SPENDER(), VALUE), 'Should return true');
     assert(ERC20Impl::allowance(@state, OWNER(), SPENDER()) == VALUE - VALUE, 'Should be 0');
 }
 
@@ -217,7 +217,7 @@ fn test_decrease_allowance() {
 fn test_decrease_allowance_to_zero_address() {
     let mut state = setup();
     set_caller_address(OWNER());
-    ERC20Impl::decrease_allowance(ref state, Zeroable::zero(), VALUE);
+    ERC20Impl::decreaseAllowance(ref state, Zeroable::zero(), VALUE);
 }
 
 #[test]
@@ -225,5 +225,5 @@ fn test_decrease_allowance_to_zero_address() {
 #[should_panic(expected: ('u256_sub Overflow', ))]
 fn test_decrease_allowance_from_zero_address() {
     let mut state = setup();
-    ERC20Impl::decrease_allowance(ref state, SPENDER(), VALUE);
+    ERC20Impl::decreaseAllowance(ref state, SPENDER(), VALUE);
 }

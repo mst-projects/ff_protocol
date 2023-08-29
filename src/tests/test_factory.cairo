@@ -103,7 +103,7 @@ fn test_set_fee_to() {
 
 #[test]
 #[available_gas(20_000_000)]
-#[should_panic(expected: ('FORBIDDEN', ))]
+#[should_panic(expected: ('Not authorized', ))]
 fn test_set_fee_to_from_zero() {
     let mut state = setup();
     FactoryImpl::set_fee_to(ref state, FEE_RECEIVER());
@@ -127,7 +127,7 @@ fn test_set_fee_to_setter() {
 
 #[test]
 #[available_gas(20_000_000)]
-#[should_panic(expected: ('FORBIDDEN', ))]
+#[should_panic(expected: ('Not authorized', ))]
 fn test_set_fee_to_setter_from_zero() {
     let mut state = setup();
     FactoryImpl::set_fee_to(ref state, NEW_OWNER());
@@ -146,6 +146,8 @@ fn test_create_pair() {
     'pool address'.print();
     pool.print();
 }
+
+//todo: test case for create_pair twice with the same token pair
 
 #[test]
 #[available_gas(20_000_000)]
