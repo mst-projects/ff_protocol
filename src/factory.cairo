@@ -102,9 +102,9 @@ mod Factory {
 
             // deoloy pool contract
             let (created_pool, returned_data) = deploy_syscall(
-                class_hash, contract_address_salt, calldata, deploy_from_zero: false, 
+                class_hash, contract_address_salt, calldata, deploy_from_zero: false,
             )
-                .unwrap_syscall();
+                .unwrap();
             IPoolDispatcher { contract_address: created_pool }.initialize(token0, token1);
             self.pool_by_tokens.write((token0, token1), created_pool);
             self.pool_by_tokens.write((token1, token0), created_pool);
